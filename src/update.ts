@@ -5,6 +5,7 @@ import { signal, Storage } from "nsh";
 import { Updater } from "discoveryos/native";
 import { type Manifest, parseManifest } from "./updateManifest";
 import { notify } from "./ui/toast";
+import { consoleDebug } from "./debugLog";
 
 // The package kept for the next start or a swap, and the build it is: read by the app that runs it, to say so.
 const UPDATED_KEY = "updatedTo";
@@ -83,7 +84,7 @@ export function startUpdateCheck(): void {
   setTimeout(() => {
     // This build is running: a package swapped in before is accepted now.
     const healthy = Updater.markHealthy();
-    if (healthy.startsWith("err")) console.log(`update: ${healthy}`);
+    if (healthy.startsWith("err")) consoleDebug(`update: ${healthy}`);
     announceUpdate();
     checkForUpdate()
       .then(async (manifest) => {
@@ -99,7 +100,7 @@ export function startUpdateCheck(): void {
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         record(`failed: ${message}`);
-        console.log(`update: ${message}`);
+        consoleDebug(`update: ${message}`);
       });
   }, CHECK_DELAY_MS);
 }

@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { htmlToText, parsePmConversation, parsePmUsers, absolutize, floorFromLink, quotedFloor, bodyWithoutQuote, linkQuote, captureGroups, htmlDecode, parseBookmarks, parseChannels, parseMyReplies, parseMyThreads, unescapeNumericEntities, parsePosts, parseProfile, parseReplies, parseSearchResults, parseUser, mergePage, fixImages, removePercentEncoding, trimLeadingBlanks, threadIdFromLink, parseThreadPageInfo } from "./parse";
+import { htmlToText, parsePmConversation, parsePmUsers, absolutize, floorFromLink, quotedFloor, bodyWithoutQuote, markQuoteAttributions, captureGroups, htmlDecode, parseBookmarks, parseChannels, parseMyReplies, parseMyThreads, unescapeNumericEntities, parsePosts, parseProfile, parseReplies, parseSearchResults, parseUser, mergePage, fixImages, pictureUrls, removePercentEncoding, trimLeadingBlanks, threadIdFromLink, parseThreadPageInfo } from "./parse";
 
 test("captureGroups returns one match's groups, or every whole match", () => {
   expect(captureGroups("a1b", "a(\\d)b", true)).toEqual(["1"]);
@@ -210,29 +210,46 @@ test("keeps paging when a page repeats a sticky thread and adds new ones", () =>
 
 test("uses the real picture from file= when src is a placeholder", () => {
   expect(fixImages('<img src="images/loading.gif" file="attach/1.jpg" width="100">')).toBe(
-    '<p><img src="attach/1.jpg" width="100%"></p>',
+    '<p><img src="attach/1.jpg"></p>',
   );
-  expect(fixImages('<img src="attach/full.jpg" file="attach/small.jpg">')).toBe('<p><img src="attach/full.jpg" width="100%"></p>');
+  expect(fixImages('<img src="attach/full.jpg" file="attach/small.jpg">')).toBe('<p><img src="attach/full.jpg"></p>');
   expect(fixImages('<img src="smilies/a.gif">')).toBe('<img src="smilies/a.gif">');
 });
 
 test("shows the original picture, not Discuz's thumbnail", () => {
   expect(fixImages('<img src="https://img02.4d4y.com/forum/attachments/d/a.jpg.thumb.jpg" border="0">')).toBe(
-    '<p><img src="https://img02.4d4y.com/forum/attachments/d/a.jpg" border="0" width="100%"></p>',
+    '<p><img src="https://img02.4d4y.com/forum/attachments/d/a.jpg" border="0"></p>',
   );
 });
 
-test("drops Discuz's size on pictures but keeps it on smilies", () => {
+test("drops Discuz's size on pictures (shown at their own size) but keeps it on smilies", () => {
   expect(fixImages('<img src="attach/a.jpg" width="31" height="41" border="0">')).toBe(
-    '<p><img src="attach/a.jpg" border="0" width="100%"></p>',
+    '<p><img src="attach/a.jpg" border="0"></p>',
   );
   expect(fixImages('<img src="images/smilies/x.gif" width="20">')).toBe('<img src="images/smilies/x.gif" width="20">');
+});
+
+test("shows a picture whose pixel size is known at its size in points, and only that picture", () => {
+  const sizes: Record<string, { width: number; height: number }> = {
+    "https://www.4d4y.com/forum/attach/a.jpg": { width: 1290, height: 2796 },
+  };
+  const options = { base: "https://www.4d4y.com/forum/", sizeOf: (url: string) => sizes[url], pixelRatio: 3 };
+  expect(fixImages('<img src="attach/a.jpg" border="0"><img src="attach/b.jpg">', options)).toBe(
+    '<p><img src="attach/a.jpg" border="0" width="430"></p><p><img src="attach/b.jpg"></p>',
+  );
+  expect(fixImages('<img src="images/smilies/x.gif" width="20">', options)).toBe('<img src="images/smilies/x.gif" width="20">');
+});
+
+test("lists the absolute URLs of a post's pictures, without smilies or duplicates", () => {
+  expect(
+    pictureUrls('<img src="attach/a.jpg"><img src="images/smilies/x.gif"><img src="attach/a.jpg.thumb.jpg"><img onclick="zoom(this, \'attach/b.jpg\')" src="x">'),
+  ).toEqual(["https://www.4d4y.com/forum/attach/a.jpg", "https://www.4d4y.com/forum/attach/b.jpg"]);
 });
 
 test("takes the full picture from a zoom link", () => {
   expect(
     fixImages(`<a href="javascript:;"><img onclick="zoom(this, 'attachments/d/a.jpg')" src="attachments/d/a.jpg.thumb.jpg" border="0"></a>`),
-  ).toBe('<p><img src="attachments/d/a.jpg" border="0" width="100%"></p>');
+  ).toBe('<p><img src="attachments/d/a.jpg" border="0"></p>');
 });
 
 test("drops hidden attachment spans, their menus and Discuz icons", () => {
@@ -240,12 +257,12 @@ test("drops hidden attachment spans, their menus and Discuz icons", () => {
     'a<span style="position: absolute; display: none" id="attach_1"><img src="https://x/images/default/attachimg.gif" border="0"></span>' +
     '<a href="javascript:;"><img onclick="zoom(this, \'https://x/a.jpg\')" src="https://x/a.jpg.thumb.jpg"></a>' +
     '<div class="t_attach" id="m" style="position: absolute; display: none">\n<a href="x">下载</a>\n<div class="t_smallfont">2026</div>\n\n</div>\n<br />b';
-  expect(fixImages(html)).toBe('a<p><img src="https://x/a.jpg" width="100%"></p>\n<br />b');
+  expect(fixImages(html)).toBe('a<p><img src="https://x/a.jpg"></p>\n<br />b');
 });
 
-test("turns Discuz's layout table into blocks so pictures keep the column width", () => {
+test("turns Discuz's layout table into plain blocks", () => {
   expect(fixImages('<table><tr><td class="t_msgfont">a<img src="x.jpg"></td></tr></table>')).toBe(
-    '<div><div><div>a<p><img src="x.jpg" width="100%"></p></div></div></div>',
+    '<div><div><div>a<p><img src="x.jpg"></p></div></div></div>',
   );
 });
 
@@ -425,18 +442,11 @@ test("quotes the outermost floor when quotes are nested", () => {
   expect(quotedFloor(body, "900")).toBe("2");
 });
 
-test("wraps the outermost quote in a link to the floor it quotes", () => {
+test("marks the attribution of a quote of a floor of the thread, and no other", () => {
   const quote =
-    '<div class="quote"><blockquote><a href="redirect.php?goto=findpost&amp;pid=111&amp;ptid=900">x</a>引用' +
-    '<div class="quote"><blockquote>更深</blockquote></div></blockquote></div>';
-  expect(linkQuote(quote + "我的话", "900")).toBe(
-    '<a href="redirect.php?goto=findpost&amp;pid=111&amp;ptid=900" style="text-decoration:none;color:inherit">' + quote + "</a>我的话",
-  );
-});
-
-test("a quote of another thread is not linked", () => {
-  const body = '<div class="quote"><blockquote><a href="redirect.php?goto=findpost&amp;pid=111&amp;ptid=999">x</a>引用</blockquote></div>回复';
-  expect(linkQuote(body, "900")).toBe(body);
+    '<div class="quote"><blockquote><font size="2" color="#999999">甲 发表于 t <a href="redirect.php?goto=findpost&amp;pid=111&amp;ptid=900">x</a></font>引用</blockquote></div>';
+  expect(markQuoteAttributions(quote + "回复", "900")).toBe(quote.replace('<font size', '<font data-floor="111" size') + "回复");
+  expect(markQuoteAttributions(quote + "回复", "901")).toBe(quote + "回复");
 });
 
 test("drops the outermost quote and keeps the reply's own text", () => {

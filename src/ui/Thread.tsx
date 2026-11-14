@@ -1,24 +1,28 @@
 // A thread's replies, pages, quote and reply draft (`PostDetailView` of the
 // Swift app). The draft is kept per thread in the app's storage.
 import { Clipboard, keymap, List, signal, Storage, Text, View, type PasteEvent, type ListRef } from "nsh";
-import { Dialog, TextView } from "nsh/base";
+import { Dialog, TextView, type TextViewRef } from "nsh/base";
 import { currentUser, deletePost, editPost, HOST, loadEditForm, postReply, ReplyRefused, uploadAttachment, uploadEditAttachment, type EditForm } from "../discuz/client";
 import { bookmarkPost, clearThreadReplyPages, loadFloorPage, loadReplyPage, removeBookmark } from "../discuz/forum";
-import { absolutize, absoluteUrl, attachmentLinks, bodyWithoutQuote, fixDiscuzMarkup, fixImages, floorFromLink, htmlToText, isAttachmentUrl, linkQuote, mergePage, quotedFloor, threadIdFromLink, trimLeadingBlanks, type Post, type Reply } from "../discuz/parse";
+import { absolutize, absoluteUrl, attachmentLinks, bodyWithoutQuote, fixDiscuzMarkup, fixImages, floorFromLink, htmlToText, isAttachmentUrl, markQuoteAttributions, mergePage, quotedFloor, threadIdFromLink, trimLeadingBlanks, type Post, type Reply } from "../discuz/parse";
 import { draftToPost, postToDraft, replyQuoteInDraft } from "../discuz/quote";
 import { downloadAttachment } from "./downloads";
 import { DISCUZ_EXTENSIONS, renderDiscuzNode } from "./discuzMarkup";
 import { useCommand } from "./commands";
+import { consoleDebug } from "../debugLog";
 import { openLink } from "./links";
 import { timeAgo } from "../discuz/timeAgo";
 import { LoadingBar } from "./LoadingBar";
 import { notify } from "./toast";
 import { palette } from "./appearance";
 import { titleBarShown } from "./TitleBar";
-import { BrowserIcon, BubbleIcon, LinkIcon, PencilIcon, StarIcon, TrashIcon } from "./icons";
+import { BrowserIcon, LinkIcon, StarIcon } from "./icons";
+import { MessageActions } from "./MessageActions";
+import { pickerOpenOn, quickEmojis, reactionsOn, toggleReaction } from "./reactions";
 import { ReplyCard, type ReplyComment } from "./ReplyCard";
 import { ReplyBox } from "./ReplyBox";
 import { attachmentTag, createAttachments } from "./attachments";
+import { pictureOptions } from "./pictureSizes";
 import type { Attached } from "./ReplyBox";
 import { hint } from "./Hint";
 import { canSendReply } from "./replyGate";
@@ -153,8 +157,11 @@ export function Thread(props: {
     "Can't attach that file. Try dragging it into the box.",
   );
 
-  function quote(r: Reply) {
-    const text = replyQuoteInDraft(r, props.post.id);
+  // Each reply's text view, by floor: `q` asks the highlighted one for its selected text.
+  const bodyViews = new Map<number, TextViewRef>();
+
+  function quote(r: Reply, selected?: string) {
+    const text = replyQuoteInDraft(r, props.post.id, selected);
     setDraft(draft() ? `${text}\n\n${draft()}` : `${text}\n`);
   }
 
@@ -322,7 +329,7 @@ export function Thread(props: {
   const opId = () => replies().find((r) => r.seq === 1)?.author.id;
   // The Forum's shortcut list, open over the window: the keys are off while it is.
   const keysOn = () => !props.shortcutsOpen?.();
-  let replyField: { focus(): void } | undefined;
+  let replyField: { focus(): void; blur(): void } | undefined;
   let repliesList: ListRef | undefined;
   let gPending: ReturnType<typeof setTimeout> | undefined;
 
@@ -363,8 +370,22 @@ export function Thread(props: {
     run: () => {
       const target = replies().find((r) => r.seq === hovered());
       if (!target) return;
-      quote(target);
-      replyField?.focus();
+      // Text selected in the highlighted reply is all that is quoted; otherwise the whole reply.
+      const view = bodyViews.get(target.seq);
+      consoleDebug(`quote: q ${JSON.stringify({ floor: target.seq, viewFound: !!view, viewFloors: [...bodyViews.keys()] })}`);
+      void (async () => {
+        let picked = "";
+        if (view) {
+          try {
+            picked = (await view.selectedText()).trim();
+            consoleDebug(`quote: selectedText ${JSON.stringify({ floor: target.seq, text: picked })}`);
+          } catch (e) {
+            consoleDebug(`quote: selectedText failed ${JSON.stringify({ floor: target.seq, error: String(e) })}`);
+          }
+        }
+        quote(target, picked || undefined);
+        replyField?.focus();
+      })();
     },
   });
   // `e` edits the highlighted reply, when it is the signed-in user's own (the same reply `q` quotes).
@@ -378,6 +399,19 @@ export function Thread(props: {
       if (target) void startEdit(target);
     },
   });
+
+  // `1` to `4` react to the highlighted reply with the quick emoji in that place of the bar, as a click does.
+  // They work with no sign-in, since reactions are kept on this machine.
+  const reactWithQuick = (n: number) => {
+    const target = replies().find((r) => r.seq === hovered());
+    const emoji = quickEmojis()[n - 1];
+    if (target && emoji) toggleReaction(target.id, emoji);
+  };
+  const reactEnabled = (n: number) => () => keysOn() && !editing() && replies().some((r) => r.seq === hovered()) && !!quickEmojis()[n - 1];
+  useCommand("thread.react1", { enabled: reactEnabled(1), run: () => reactWithQuick(1) });
+  useCommand("thread.react2", { enabled: reactEnabled(2), run: () => reactWithQuick(2) });
+  useCommand("thread.react3", { enabled: reactEnabled(3), run: () => reactWithQuick(3) });
+  useCommand("thread.react4", { enabled: reactEnabled(4), run: () => reactWithQuick(4) });
 
   // Load the first page and the saved draft once.
   if (props.focusPid) void showFloor(props.focusPid);
@@ -463,6 +497,9 @@ export function Thread(props: {
           reused as the user scrolls. Each row reads its reply through `item()`. */}
       <List
         style={{ flex: 1 }}
+        // A press anywhere in the posts takes the focus out of the reply box, as Esc does, so the
+        // shortcuts (q, e) act on the post under the pointer. The capture runs before the post's own press.
+        onTouchStartCapture={() => replyField?.blur()}
         contentStyle={{ padding: 12, gap: 12 }}
         each={replies()}
         estimatedItemSize={180}
@@ -483,35 +520,39 @@ export function Thread(props: {
             highlighted={() => hovered() === item().seq}
             onHoverIn={() => hovered.set(item().seq)}
             onHoverOut={() => {
-              if (hovered() === item().seq) hovered.set(null);
+              // The pointer goes to the picker, which is outside the post: the post stays highlighted while it is open.
+              if (hovered() === item().seq && pickerOpenOn() === null) hovered.set(null);
             }}
-            trailing={
-              props.signedIn ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  {isOwn(item()) ? (
-                    <View onPress={() => void startEdit(item())} accessibilityLabel="Edit" tooltip={hint("编辑")}>
-                      <PencilIcon size={16} />
-                    </View>
-                  ) : null}
-                  {/* The floor 1 is the thread itself, which is not deleted from here. */}
-                  {isOwn(item()) && item().seq !== 1 ? (
-                    <View onPress={() => pendingDelete.set({ pid: item().id, seq: item().seq })} accessibilityLabel="Delete" tooltip={hint("删除")}>
-                      <TrashIcon size={16} />
-                    </View>
-                  ) : null}
-                  <View onPress={() => quote(item())} accessibilityLabel="Quote" tooltip={hint("引用 (q)")}>
-                    <BubbleIcon size={16} />
-                  </View>
-                </View>
-              ) : null
+            // Hovering a post shows its bar: the quick emojis, and quote, edit and delete. Edit and
+            // delete are the signed-in user's own posts only, and floor 1 is not deleted from here.
+            actionBar={
+              <MessageActions
+                pid={item().id}
+                quick={quickEmojis}
+                onClose={() => {
+                  if (hovered() === item().seq) hovered.set(null);
+                }}
+                mine={() => reactionsOn(item().id)}
+                onReact={(emoji) => toggleReaction(item().id, emoji)}
+                onQuote={props.signedIn ? () => quote(item()) : undefined}
+                onEdit={props.signedIn && isOwn(item()) ? () => void startEdit(item()) : undefined}
+                onDelete={props.signedIn && isOwn(item()) && item().seq !== 1 ? () => pendingDelete.set({ pid: item().id, seq: item().seq }) : undefined}
+              />
             }
+            reactions={() => reactionsOn(item().id)}
+            onReactionPress={(emoji) => toggleReaction(item().id, emoji)}
             body={
               <View style={{ gap: 12, alignSelf: "stretch" }}>
                 <TextView
-                  html={absolutize(linkQuote(trimLeadingBlanks(fixDiscuzMarkup(fixImages(item().body))), props.post.id), HOST)}
+                  html={absolutize(markQuoteAttributions(trimLeadingBlanks(fixDiscuzMarkup(fixImages(item().body, pictureOptions(item().body, HOST)))), props.post.id), HOST)}
                   styles={item().seq === 1 ? OP_TITLE_STYLES : undefined}
                   extensions={DISCUZ_EXTENSIONS}
-                  renderCustom={renderDiscuzNode}
+                  selectable
+                  ref={(view: TextViewRef) => {
+                    consoleDebug(`quote: ref ${JSON.stringify({ floor: item().seq, set: !!view })}`);
+                    if (view) bodyViews.set(item().seq, view);
+                  }}
+                  renderCustom={(node) => renderDiscuzNode(node, (pid) => openFloor(pid, props.post.id))}
                   onLinkPress={(e) => {
                     // A 4d4y thread link opens in this column; a file the post attaches is saved to Downloads;
                     // any other link opens in the system browser.

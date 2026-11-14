@@ -24,6 +24,10 @@ export type CommandId =
   | "thread.favorite"
   | "thread.quote"
   | "thread.edit"
+  | "thread.react1"
+  | "thread.react2"
+  | "thread.react3"
+  | "thread.react4"
   | "reply.send";
 
 interface Definition {
@@ -51,6 +55,10 @@ const CATALOG: Record<CommandId, Definition> = {
   "thread.favorite": { title: "Favorite Thread", keys: ["f"], order: 130 },
   "thread.quote": { title: "Quote Highlighted Reply", keys: ["q"], order: 140 },
   "thread.edit": { title: "Edit Highlighted Reply", keys: ["e"], order: 145 },
+  "thread.react1": { title: "React with Quick Emoji 1", keys: ["1"], order: 141 },
+  "thread.react2": { title: "React with Quick Emoji 2", keys: ["2"], order: 142 },
+  "thread.react3": { title: "React with Quick Emoji 3", keys: ["3"], order: 143 },
+  "thread.react4": { title: "React with Quick Emoji 4", keys: ["4"], order: 144 },
   "reply.send": { title: "Send Reply", keys: ["mod+enter"], order: 150 },
 };
 

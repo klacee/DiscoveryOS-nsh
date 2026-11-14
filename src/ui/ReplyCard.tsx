@@ -12,9 +12,15 @@ export function ReplyCard(props: {
   /** Whether the post is by the thread's author (楼主), shown as a tag beside the name. */
   isOp?: boolean;
   meta: string;
-  /** Controls at the end of the meta line, such as Quote. */
+  /** Controls at the end of the meta line. */
   trailing?: JSX.Element | null;
   body: JSX.Element;
+  /** The bar of actions that hovers over the post while it is highlighted. */
+  actionBar?: JSX.Element | null;
+  /** The emojis the user put on this post, shown as chips under the body. Read reactively. */
+  reactions?: () => string[];
+  /** Called with an emoji when its chip is pressed (takes the reaction off). */
+  onReactionPress?: (emoji: string) => void;
   /** Replies that quote this post, shown under the body as comments. Read reactively, so a
    * reply loaded later (on another page) shows up here. */
   comments?: () => ReplyComment[];
@@ -33,6 +39,10 @@ export function ReplyCard(props: {
         onMouseEnter={props.onHoverIn}
         onMouseLeave={props.onHoverOut}
         style={{
+          // Relative, so the action bar sits over this post and not a wider ancestor. A highlighted
+          // post stacks above the posts below it, so its bar and emoji picker are not covered by them.
+          position: "relative",
+          zIndex: props.highlighted?.() ? 10 : 0,
           flexDirection: "row",
           alignItems: "flex-start",
           gap: 8,
@@ -56,7 +66,33 @@ export function ReplyCard(props: {
             {props.trailing}
           </View>
           {props.body}
+          {/* Read inside the JSX, so the chips follow the user's reactions as they change. */}
+          {props.reactions && props.reactions().length > 0 ? (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+              {props.reactions().map((emoji) => (
+                <View
+                  onPress={() => props.onReactionPress?.(emoji)}
+                  accessibilityLabel="Remove this reaction"
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                    paddingHorizontal: 8,
+                    paddingVertical: 3,
+                    borderRadius: 14,
+                    backgroundColor: "#e6f2ff",
+                  }}
+                >
+                  <Text style={{ fontSize: 13 }}>{emoji}</Text>
+                  {/* Only the user's own reaction is known for now, so the count is 1; server counts replace it later. */}
+                  <Text style={{ fontSize: 13, color: "#1d6fd1" }}>{"1"}</Text>
+                </View>
+              ))}
+            </View>
+          ) : null}
         </View>
+        {/* Read inside the JSX, so the bar appears while the post is highlighted. */}
+        {props.highlighted?.() && props.actionBar ? props.actionBar : null}
       </View>
       {/* Read inside the JSX, so the row follows the comments as its reply changes (a row is reused for other replies). */}
       {props.comments && props.comments().length > 0 ? (

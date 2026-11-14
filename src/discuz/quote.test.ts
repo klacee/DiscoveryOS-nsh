@@ -14,6 +14,17 @@ test("a reply quoted into the box is `>` lines under an attribution with the flo
   expect(replyQuoteInDraft(reply, "9")).toBe("> Alice 发表于 2026-11-02 10:00 [pid:555 ptid:9]\n> hi\n> there you");
 });
 
+test("a reply quoted with a selection quotes only the selected text", () => {
+  const reply = {
+    id: "555",
+    author: { id: "7", name: "Alice", avatar: "" },
+    at: "2026-11-02 10:00",
+    seq: 3,
+    body: '<div class="postmessage">hi<br>there <b>you</b></div>',
+  };
+  expect(replyQuoteInDraft(reply, "9", "there you")).toBe("> Alice 发表于 2026-11-02 10:00 [pid:555 ptid:9]\n> there you");
+});
+
 test("a quoted block is sent as the forum's quote, its arrow linking to the floor", () => {
   const draft = quoteInDraft({ author: "Alice", at: "2026-11-02 10:00", pid: "555", ptid: "9" }, "hi\nthere you") + "\n\nmy reply";
   expect(draftToPost(draft, HOST)).toBe(

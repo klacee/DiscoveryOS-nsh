@@ -11,6 +11,7 @@ import { notify } from "./toast";
 import { openLink } from "./links";
 import { ReplyBox } from "./ReplyBox";
 import { ReplyCard } from "./ReplyCard";
+import { pictureOptions } from "./pictureSizes";
 
 const draftKey = (uid: string) => `pm-draft:${uid}`;
 
@@ -95,7 +96,7 @@ export function Conversation(props: { peer: () => Post; onOpenThread?: (tid: str
               meta={item().at}
               body={
                 <TextView
-                  html={absolutize(trimLeadingBlanks(fixImages(item().body)), HOST)}
+                  html={absolutize(trimLeadingBlanks(fixImages(item().body, pictureOptions(item().body, HOST))), HOST)}
                   onLinkPress={(e) => {
                     const tid = threadIdFromLink(e.url);
                     if (tid && props.onOpenThread) props.onOpenThread(tid);

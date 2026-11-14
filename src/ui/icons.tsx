@@ -12,6 +12,7 @@ import themeDarkSvg from "./theme-dark.svg";
 import downloadSvg from "./download.svg";
 import chromeSvg from "./chrome.svg";
 import linkSvg from "./link.svg";
+import quoteSvg from "./quote.svg";
 import type { AppearanceMode } from "./appearance";
 
 /** The open-in-browser icon, in `chrome.svg`: the Chrome logo (Simple Icons, CC0), in the muted theme color. */
@@ -203,6 +204,36 @@ export function BubbleIcon(props: { size: number }) {
       }}
     />
   );
+}
+
+/** A smiling face as a thin outline: the ring, two eyes and a smile. */
+export function SmileIcon(props: { size: number }) {
+  return (
+    <Canvas
+      style={{ width: props.size, height: props.size }}
+      draw={(cx, size) => {
+        const s = size.width;
+        cx.beginPath();
+        cx.arc(s / 2, s / 2, s * 0.42, 0, Math.PI * 2);
+        cx.strokeStyle = palette().muted;
+        cx.lineWidth = LINE;
+        cx.stroke();
+        cx.beginPath();
+        cx.arc(s * 0.36, s * 0.42, s * 0.04, 0, Math.PI * 2);
+        cx.arc(s * 0.64, s * 0.42, s * 0.04, 0, Math.PI * 2);
+        cx.fillStyle = palette().muted;
+        cx.fill();
+        cx.beginPath();
+        cx.arc(s / 2, s * 0.48, s * 0.2, Math.PI * 0.15, Math.PI * 0.85);
+        cx.stroke();
+      }}
+    />
+  );
+}
+
+/** The quote icon, in `quote.svg`: two filled quotation marks ("99"), in the muted theme color. */
+export function QuoteIcon(props: { size: number }) {
+  return <Image src={quoteSvg} style={{ width: props.size, height: props.size }} />;
 }
 
 /** A paper plane as a thin outline; `enabled` reads true for the link blue, false for the muted one. */

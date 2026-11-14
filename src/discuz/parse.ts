@@ -421,41 +421,56 @@ export function quotedFloor(body: string, ptid: string): string | undefined {
   return link[1];
 }
 
-// Where the `<div class="quote">` at `start` ends (just after its closing `</div>`), or -1.
-function quoteEnd(body: string, start: number): number {
-  const tags = /<div\b[^>]*>|<\/div>/gi;
-  tags.lastIndex = start;
-  let depth = 0;
-  let tag: RegExpExecArray | null;
-  while ((tag = tags.exec(body))) {
-    depth += tag[0].startsWith("</") ? -1 : 1;
-    if (depth === 0) return tags.lastIndex;
+/**
+ * The body with the attribution of each outermost quote that names a floor of `ptid` marked with that
+ * floor's id (`data-floor`): the quote's first `<font>`, which holds its "author 发表于 time" line.
+ */
+export function markQuoteAttributions(body: string, ptid: string): string {
+  let out = body;
+  let from = 0;
+  for (;;) {
+    const start = out.slice(from).search(/<div[^>]*class="quote"/i);
+    if (start < 0) break;
+    const at = from + start;
+    const tags = /<div\b[^>]*>|<\/div>/gi;
+    tags.lastIndex = at;
+    let depth = 0;
+    let tag: RegExpExecArray | null;
+    let end = -1;
+    while ((tag = tags.exec(out))) {
+      depth += tag[0].startsWith("</") ? -1 : 1;
+      if (depth === 0) {
+        end = tags.lastIndex;
+        break;
+      }
+    }
+    if (end < 0) break;
+    const quote = out.slice(at, end);
+    const pid = quotedFloor(quote, ptid);
+    if (pid) {
+      const marked = quote.replace(/<font\b/i, `<font data-floor="${pid}"`);
+      out = out.slice(0, at) + marked + out.slice(end);
+      from = at + marked.length;
+    } else {
+      from = end;
+    }
   }
-  return -1;
+  return out;
 }
 
 /** A reply's body without its outermost quote block, so only what the reply itself says is left. */
 export function bodyWithoutQuote(body: string): string {
   const start = body.search(/<div[^>]*class="quote"/i);
   if (start < 0) return body;
-  const end = quoteEnd(body, start);
-  return end < 0 ? body : body.slice(0, start) + body.slice(end);
-}
-
-/**
- * The body with its outermost quote wrapped in a link to the floor it quotes, so pressing anywhere
- * in the quote opens that floor (the link goes through the same handler as the quote's arrow).
- * A body whose quote does not name a floor of `ptid` is returned as it is.
- */
-export function linkQuote(body: string, ptid: string): string {
-  const pid = quotedFloor(body, ptid);
-  if (!pid) return body;
-  const start = body.search(/<div[^>]*class="quote"/i);
-  const end = quoteEnd(body, start);
-  if (end < 0) return body;
-  // The link is drawn as the quote's own text: no underline, and no link colour.
-  const link = `<a href="redirect.php?goto=findpost&amp;pid=${pid}&amp;ptid=${ptid}" style="text-decoration:none;color:inherit">`;
-  return `${body.slice(0, start)}${link}${body.slice(start, end)}</a>${body.slice(end)}`;
+  const tags = /<div\b[^>]*>|<\/div>/gi;
+  tags.lastIndex = start;
+  let depth = 0;
+  let tag: RegExpExecArray | null;
+  while ((tag = tags.exec(body))) {
+    depth += tag[0].startsWith("</") ? -1 : 1;
+    if (depth === 0) return body.slice(0, start) + body.slice(tags.lastIndex);
+  }
+  return body;
 }
 
 /**
@@ -537,14 +552,22 @@ export function trimLeadingBlanks(html: string): string {
 /** The pictures of a Discuz post. Discuz wraps a picture as
  * `<a href="javascript:;"><img onclick="zoom(this, 'full.jpg')" src="thumb">`;
  * the full picture is in `zoom`, else `file=`, else `src=` (a placeholder such
- * as a loading image is skipped for `file=`). A picture is its own block that
- * fills the column; smilies keep their size. */
-export function fixImages(html: string): string {
+ * as a loading image is skipped for `file=`). A picture is its own block with
+ * no size asked for, so the TextView shows it at its natural size, at most the
+ * column's width (a small picture is not stretched up to the column); smilies
+ * keep their size. */
+export type PictureSize = { width: number; height: number };
+
+/** How `fixImages` sizes a picture: `sizeOf` gives its size in pixels by its absolute URL (none while unknown),
+ * and `pixelRatio` (device pixels per point) turns those into the points it is shown at. */
+export type PictureOptions = { base?: string; sizeOf?: (url: string) => PictureSize | undefined; pixelRatio?: number };
+
+export function fixImages(html: string, options: PictureOptions = {}): string {
   // Discuz's hidden attachment spans and their menus are not content: the
   // TextView does not hide `display: none`, so they would show (as the small
   // attachment icons).
-  // Discuz lays the body out in a table: a picture's percentage width would
-  // then resolve against the cell's content, so the table becomes plain blocks.
+  // Discuz lays the body out in a table: the TextView lays a picture out
+  // against its block, so the table becomes plain blocks.
   const flat = html.replace(/<(table|tr|td|th)\b[^>]*>/gi, "<div>").replace(/<\/(table|tr|td|th)>/gi, "</div>");
   const visible = flat
     .replace(/<span\b[^>]*display:\s*none[^>]*>[\s\S]*?<\/span>/gi, "")
@@ -572,9 +595,23 @@ export function fixImages(html: string): string {
       kept = kept.replace(/\s+/g, " ").trim();
       return `<img src="${picture}"${kept ? " " + kept : ""}>`;
     }
+    // Discuz's width and height are the thumbnail's, not the picture's: left out, the picture shows at its own size.
     kept = kept.replace(/\s(width|height)="[^"]*"/gi, "").replace(/\s+/g, " ").trim();
-    return `<p><img src="${picture}"${kept ? " " + kept : ""} width="100%"></p>`;
+    // Once its pixel size is known, the picture is shown at that size in points (the height follows its ratio);
+    // until then it has no width, so the TextView shows its natural size.
+    const size = options.sizeOf?.(absoluteUrl(picture, options.base ?? HOST_BASE));
+    const width = size ? ` width="${Math.round((size.width / (options.pixelRatio ?? 1)) * 10) / 10}"` : "";
+    return `<p><img src="${picture}"${kept ? " " + kept : ""}${width}></p>`;
   });
+}
+
+/** The absolute URLs of the pictures a post shows (not its smilies), for `fixImages`'s sizes to be read. */
+export function pictureUrls(html: string, base: string = HOST_BASE): string[] {
+  const urls = new Set<string>();
+  for (const [, src] of fixImages(html).matchAll(/<img src="([^"]*)"/gi)) {
+    if (!/smilies\//i.test(src)) urls.add(absoluteUrl(src, base));
+  }
+  return [...urls];
 }
 
 // Discuz's `[size=N]` as the pixel size of the font (1 to 7).

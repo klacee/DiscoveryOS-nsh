@@ -25,9 +25,12 @@ export function quoteInDraft(source: QuoteSource, body: string): string {
   return [attribution, ...body.split("\n").map(quotedLine)].join("\n");
 }
 
-/** A reply quoted into the box: its text (HTML as plain text) under the reply's attribution. */
-export function replyQuoteInDraft(reply: Reply, ptid: string): string {
-  return quoteInDraft({ author: reply.author.name, at: reply.at, pid: reply.id, ptid }, htmlToText(reply.body));
+/**
+ * A reply quoted into the box under the reply's attribution: its text (HTML as plain text), or
+ * `selected` when only a part of it is quoted (the text the user selected in the reply).
+ */
+export function replyQuoteInDraft(reply: Reply, ptid: string, selected?: string): string {
+  return quoteInDraft({ author: reply.author.name, at: reply.at, pid: reply.id, ptid }, selected ?? htmlToText(reply.body));
 }
 
 /** The box's text as the Discuz post: every run of `>` lines becomes a `[quote]`. */

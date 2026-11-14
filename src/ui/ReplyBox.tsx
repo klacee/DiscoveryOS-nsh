@@ -57,7 +57,7 @@ export function ReplyBox(props: {
   /** Local files dropped on the box, as `file:` URLs. */
   onFileDrop?: (uris: string[]) => void;
   /** The text field's handle, for the app to focus it (the `r` shortcut). */
-  fieldRef?: (field: { focus(): void }) => void;
+  fieldRef?: (field: { focus(): void; blur(): void }) => void;
   /** The field's placeholder; "Reply" by default. */
   placeholder?: string;
   /** The field's height when the box is open, and the height it grows to; the reply's by default. */
