@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
 
 import marker
-from reactions import WINDOW_SECONDS, canonical_message, handle_counts, handle_reaction
+from reactions import WINDOW_SECONDS, canonical_message, handle_counts, handle_reaction, read_message
 from signing import verify
 
 
@@ -28,6 +28,7 @@ def new_identity():
 class MemoryStore:
     def __init__(self):
         self.keys, self.reactions, self.nonces = {}, set(), {}
+        self.challenges, self.key_index = {}, {}
 
     def get_key(self, uid):
         return self.keys.get(uid)
@@ -54,6 +55,22 @@ class MemoryStore:
             return False
         self.nonces[k] = expires_at
         return True
+
+    def put_challenge(self, uid, nonce, expires_at):
+        self.challenges[(uid, nonce)] = expires_at
+
+    def take_challenge(self, uid, nonce, now):
+        expires = self.challenges.pop((uid, nonce), None)
+        return expires is not None and expires >= now
+
+    def uid_for_key(self, key):
+        return self.key_index.get(key)
+
+    def set_key_index(self, key, uid):
+        self.key_index[key] = uid
+
+    def delete_key_index(self, key):
+        self.key_index.pop(key, None)
 
 
 class MarkerTests(unittest.TestCase):
@@ -109,11 +126,21 @@ class ReactionTests(unittest.TestCase):
         sig = b64url((private or self.private).sign(msg))
         return {"uid": uid, "pid": pid, "emoji": emoji, "action": action, "ts": ts, "nonce": nonce, "sig": sig}
 
+    def counts(self, pids, ts=None):
+        self.reads = getattr(self, "reads", 0) + 1
+        nonce = f"readnonce{self.reads}"
+        ts = self.NOW if ts is None else ts
+        msg = read_message("42", pids, ts, nonce)
+        query = {"uid": "42", "pids": pids, "ts": str(ts), "nonce": nonce, "sig": b64url(self.private.sign(msg))}
+        status, payload = handle_counts(query, self.NOW, self.store)
+        self.assertEqual(status, 200, payload)
+        return payload["counts"]
+
     def test_add_then_remove(self):
         self.assertEqual(handle_reaction(self.signed(), self.NOW, self.store)[0], 200)
-        self.assertEqual(handle_counts("1001", self.store)[1]["counts"]["1001"], {"👍": 1})
+        self.assertEqual(self.counts("1001")["1001"], {"👍": 1})
         self.assertEqual(handle_reaction(self.signed("remove", nonce="zzzzzzzz12"), self.NOW, self.store)[0], 200)
-        self.assertEqual(handle_counts("1001", self.store)[1]["counts"]["1001"], {})
+        self.assertEqual(self.counts("1001")["1001"], {})
 
     def test_replay_is_rejected(self):
         body = self.signed()

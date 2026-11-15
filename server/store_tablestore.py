@@ -13,6 +13,11 @@ import tablestore as ots
 from reactions import Store
 
 
+def _is_condition_failure(err: ots.OTSServiceError) -> bool:
+    # A failed condition is HTTP 412 (error code OTSConditionCheckFail).
+    return getattr(err, "http_status", None) == 412 or getattr(err, "code", "") == "OTSConditionCheckFail"
+
+
 class TableStoreStore(Store):
     def __init__(self, client: ots.OTSClient, now_fn):
         self.client = client
@@ -71,7 +76,7 @@ class TableStoreStore(Store):
             )
             return True
         except ots.OTSServiceError as err:
-            if err.code != "OTSConditionCheckFail":
+            if not _is_condition_failure(err):
                 raise
         # The row exists: it counts as used unless it has expired.
         _, row, _ = self.client.get_row("nonces", pk, columns_to_get=["expires_at"], max_version=1)
@@ -87,6 +92,49 @@ class TableStoreStore(Store):
             self.client.put_row("nonces", ots.Row(pk, [("expires_at", expires_at)]), condition=cond)
             return True
         except ots.OTSServiceError as err:
-            if err.code == "OTSConditionCheckFail":
+            if _is_condition_failure(err):
                 return False
             raise
+
+    # --- bind challenges (in the nonces table, with a "bind:" prefix) ------
+    def put_challenge(self, uid: str, nonce: str, expires_at: int) -> None:
+        self.client.put_row(
+            "nonces",
+            ots.Row([("uid", uid), ("nonce", f"bind:{nonce}")], [("expires_at", expires_at)]),
+            condition=ots.Condition(ots.RowExistenceExpectation.IGNORE),
+        )
+
+    def take_challenge(self, uid: str, nonce: str, now: int) -> bool:
+        pk = [("uid", uid), ("nonce", f"bind:{nonce}")]
+        _, row, _ = self.client.get_row("nonces", pk, columns_to_get=["expires_at"], max_version=1)
+        if row is None:
+            return False
+        expires = dict((c[0], c[1]) for c in row.attribute_columns).get("expires_at")
+        if not isinstance(expires, int) or expires < now:
+            return False
+        # Delete only if the row is still there, so two requests can't both take it.
+        try:
+            self.client.delete_row(
+                "nonces", ots.Row(pk), ots.Condition(ots.RowExistenceExpectation.EXPECT_EXIST)
+            )
+            return True
+        except ots.OTSServiceError as err:
+            if _is_condition_failure(err):
+                return False
+            raise
+
+    # --- key -> uid reverse index (in the bindings table, pk "k:<key>") ----
+    def uid_for_key(self, key: str) -> str | None:
+        _, row, _ = self.client.get_row("bindings", [("uid", f"k:{key}")], columns_to_get=["uid"], max_version=1)
+        if row is None:
+            return None
+        value = dict((c[0], c[1]) for c in row.attribute_columns).get("uid")
+        return value if isinstance(value, str) else None
+
+    def set_key_index(self, key: str, uid: str) -> None:
+        self.client.put_row("bindings", ots.Row([("uid", f"k:{key}")], [("uid", uid)]))
+
+    def delete_key_index(self, key: str) -> None:
+        self.client.delete_row(
+            "bindings", ots.Row([("uid", f"k:{key}")]), ots.Condition(ots.RowExistenceExpectation.IGNORE)
+        )

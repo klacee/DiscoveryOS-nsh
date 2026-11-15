@@ -1,9 +1,11 @@
 """FC HTTP entry point for the reactions API.
 
-Routes:
+Routes (every reaction route is signed; see reactions.py):
   GET  /health                 -> {"ok": true}
-  GET  /reactions?pids=1,2     -> per-post emoji counts
-  POST /reactions              -> signed add/remove (see reactions.py)
+  POST /bind/challenge         -> {"uid"} -> one-time nonce
+  POST /bind/complete          -> {"uid", "nonce", "sig"} -> binds uid to the key in its profile
+  GET  /reactions?uid&pids&ts&nonce&sig -> per-post emoji counts
+  POST /reactions              -> signed add/remove
 
 Environment:
   OTS_ENDPOINT   TableStore endpoint of the instance
@@ -18,6 +20,7 @@ import time
 
 import tablestore as ots
 
+import bind
 from reactions import handle_counts, handle_reaction
 from store_tablestore import TableStoreStore
 
@@ -44,10 +47,10 @@ def _store_for(context):
         creds = context.credentials
         client = ots.OTSClient(
             os.environ["OTS_ENDPOINT"],
-            instance_name=os.environ["OTS_INSTANCE"],
-            credentials_provider=ots.StaticCredentialsProvider(
-                creds.access_key_id, creds.access_key_secret, creds.security_token
-            ),
+            creds.access_key_id,
+            creds.access_key_secret,
+            os.environ["OTS_INSTANCE"],
+            sts_token=creds.security_token,
         )
         _store = TableStoreStore(client, now_fn=lambda: int(time.time()))
     return _store
@@ -77,32 +80,39 @@ def _parse_request(event):
     return {"method": method, "path": path, "query": query, "body": body}
 
 
+_ROUTES = {"/reactions": {"GET", "POST"}, "/bind/challenge": {"POST"}, "/bind/complete": {"POST"}}
+
+
 def handler(event, context):
     request = _parse_request(event)
     if request is None:
         return _response(400, {"error": "invalid_event"})
 
     method, path = request["method"], request["path"]
-    if path == "/health" and method == "GET":
-        return _response(200, {"ok": True})
+    now = int(time.time())
 
-    if path == "/reactions" and method == "GET":
-        pids = request["query"].get("pids", "")
-        try:
-            status, payload = handle_counts(pids, _store_for(context))
-        except ots.OTSServiceError:
-            return _response(503, {"error": "storage_unavailable"})
-        return _response(status, payload)
-
-    if path == "/reactions" and method == "POST":
-        if not isinstance(request["body"], dict):
-            return _response(400, {"error": "invalid_body"})
-        try:
-            status, payload = handle_reaction(request["body"], int(time.time()), _store_for(context))
-        except ots.OTSServiceError:
-            return _response(503, {"error": "storage_unavailable"})
-        return _response(status, payload)
-
-    if path in ("/health", "/reactions"):
+    if path == "/health":
+        if method == "GET":
+            return _response(200, {"ok": True})
         return _response(405, {"error": "method_not_allowed"})
-    return _response(404, {"error": "not_found"})
+    if path not in _ROUTES:
+        return _response(404, {"error": "not_found"})
+    if method not in _ROUTES[path]:
+        return _response(405, {"error": "method_not_allowed"})
+
+    try:
+        if path == "/reactions" and method == "GET":
+            status, payload = handle_counts(request["query"], now, _store_for(context))
+        else:
+            if not isinstance(request["body"], dict):
+                return _response(400, {"error": "invalid_body"})
+            body = request["body"]
+            if path == "/reactions":
+                status, payload = handle_reaction(body, now, _store_for(context))
+            elif path == "/bind/challenge":
+                status, payload = bind.start(body.get("uid"), now, _store_for(context))
+            else:
+                status, payload = bind.complete(body.get("uid"), body.get("nonce"), body.get("sig"), now, _store_for(context))
+    except (ots.OTSServiceError, ots.OTSClientError):
+        return _response(503, {"error": "storage_unavailable"})
+    return _response(status, payload)

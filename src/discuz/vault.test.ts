@@ -8,8 +8,20 @@ test("a missing or damaged item reads as empty", () => {
 
 test("the login and the cookies come back from one item", () => {
   const v = parseVault(JSON.stringify({ creds: { name: "u", pass: "a:b" }, cookies: { abc_auth: "x" } }));
-  expect(v.creds).toEqual({ name: "u", pass: "a:b" });
+  expect(v.creds).toEqual({ name: "u", pass: "a:b", question: 0, answer: "" });
   expect(v.cookies).toEqual({ abc_auth: "x" });
+});
+
+test("the security question and its answer come back with the login", () => {
+  const v = parseVault(
+    JSON.stringify({ creds: { name: "u", pass: "a:b", question: 3, answer: "长沙" }, cookies: {} }),
+  );
+  expect(v.creds).toEqual({ name: "u", pass: "a:b", question: 3, answer: "长沙" });
+});
+
+test("a question number outside the form's range is read as none", () => {
+  const v = parseVault(JSON.stringify({ creds: { name: "u", pass: "a:b", question: 9, answer: "x" }, cookies: {} }));
+  expect(v.creds).toEqual({ name: "u", pass: "a:b", question: 0, answer: "" });
 });
 
 test("entries of the wrong shape are dropped", () => {

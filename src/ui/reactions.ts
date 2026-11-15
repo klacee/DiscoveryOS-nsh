@@ -4,6 +4,12 @@
 import { Storage, signal } from "nsh";
 import { initialQuickBar, quickBarFromStorage, recordUse, type QuickBar } from "./emojiLfu";
 
+/**
+ * Whether emoji reactions are on: the quick bar, the emoji grid, the reaction chips and the number
+ * keys. Off, the stored reactions and counts are kept and nothing shows them. Set to true to bring them back.
+ */
+export const EMOJI_REACTIONS_ON = false;
+
 const QUICK_KEY = "quickEmojis";
 const REACTIONS_KEY = "reactions";
 

@@ -1,9 +1,10 @@
 import { createAnimatedValue, Image, mount, Overlay, signal, Text, View, type JSX, type ViewRef } from "nsh";
-import { Input } from "nsh/base";
+import { Input, Select } from "nsh/base";
 import { currentUser, login, logout, restoreSession } from "./src/discuz/client";
 import { loadProfile } from "./src/discuz/forum";
 import type { Profile } from "./src/discuz/parse";
-import { clearCredentials, loadCredentials, saveCredentials } from "./src/discuz/credentials";
+import { clearCredentials, loadCredentials } from "./src/discuz/credentials";
+import { loadVault, saveVault } from "./src/discuz/vault";
 import { hasSavedCookies } from "./src/discuz/cookies";
 import { Forum } from "./src/ui/Forum";
 import { notify, Toaster } from "./src/ui/toast";
@@ -17,6 +18,19 @@ import { installMenu } from "./src/ui/commands";
 import { CookieImportDialog, cookieImportOpen, setOnCookiesImported } from "./src/ui/CookieImport";
 import { AboutDialog, aboutOpen } from "./src/ui/AboutDialog";
 import { debugEnabled } from "./src/debugLog";
+
+// The forum's security questions, in the order its login form lists them. The value is the
+// `questionid` the form sends; "0" sends no question.
+const SECURITY_QUESTIONS: { value: string; title: string }[] = [
+  { value: "0", title: "安全提问" },
+  { value: "1", title: "母亲的名字" },
+  { value: "2", title: "爷爷的名字" },
+  { value: "3", title: "父亲出生的城市" },
+  { value: "4", title: "您其中一位老师的名字" },
+  { value: "5", title: "您个人计算机的型号" },
+  { value: "6", title: "您最喜欢的餐馆名称" },
+  { value: "7", title: "驾驶执照的最后四位数字" },
+];
 
 // Port of `LoginView` (`Views/MainView.swift`) and `CurrentUserStore`: the forum is
 // shown to everyone; the session is restored on launch from the saved cookies, then
@@ -137,6 +151,9 @@ function App() {
   const user = signal<string | null>(currentUser());
   const name = signal("");
   const pass = signal("");
+  // The security question (its `questionid`, 0 for none) and its answer, sent with the password.
+  const question = signal(0);
+  const answer = signal("");
   const busy = signal(false);
   const avatar = signal<string | null>(null);
   // The sign-in dialog, opened from the blank avatar while signed out.
@@ -180,11 +197,16 @@ function App() {
   async function signIn() {
     busy.set(true);
     try {
-      const ok = await login(name(), pass());
+      const ok = await login(name(), pass(), question(), answer());
       if (ok) {
-        saveCredentials({ name: name(), pass: pass() });
+        // The answer is saved with the password, so a restore after the cookies expire can answer the question.
+        saveVault({
+          ...loadVault(),
+          creds: { name: name(), pass: pass(), question: question(), answer: answer() },
+        });
         showProfile(name());
         pass.set("");
+        answer.set("");
         dialogOpen.set(false);
       } else {
         notify("sign-in", "Sign-in failed.");
@@ -210,8 +232,13 @@ function App() {
     user.set(null);
     name.set("");
     pass.set("");
+    question.set(0);
+    answer.set("");
     busy.set(false);
   }
+
+  // Signing in needs the name, the password, and the answer when a security question is chosen.
+  const canSignIn = () => name().length > 0 && pass().length > 0 && (question() === 0 || answer().length > 0);
 
   restoreAppearance();
   installMenu();
@@ -411,15 +438,54 @@ function App() {
           onChange={({ value: text }: { value: string }) => pass.set(text)}
           // Return in the password field signs in, like the default button in the Swift sheet.
           onSubmit={() => {
-            if (!busy() && name().length > 0 && pass().length > 0) void signIn();
+            if (!busy() && canSignIn()) void signIn();
           }}
           style={{ height: 28, paddingHorizontal: 8, fontSize: 14, color: palette().text, backgroundColor: palette().bg }}
         />
+        <Select
+          items={SECURITY_QUESTIONS}
+          value={String(question())}
+          accessibilityLabel="Security question"
+          onChange={({ value: v }: { value: string | null }) => {
+            question.set(Number(v ?? 0));
+            answer.set("");
+          }}
+          popupStyle={{ backgroundColor: palette().surface, borderWidth: 1, borderColor: palette().border, borderRadius: 8 }}
+          itemStyle={{ fontSize: 14, color: palette().text }}
+          trigger={
+            <View
+              style={{
+                height: 28,
+                paddingHorizontal: 8,
+                justifyContent: "center",
+                borderWidth: 1,
+                borderColor: palette().border,
+                borderRadius: 6,
+                backgroundColor: palette().bg,
+              }}
+            >
+              <Text style={{ fontSize: 14, color: palette().text }}>
+                {SECURITY_QUESTIONS.find((q) => q.value === String(question()))?.title ?? ""}
+              </Text>
+            </View>
+          }
+        />
+        {question() !== 0 ? (
+          <Input
+            placeholder="Answer"
+            value={answer()}
+            onChange={({ value: text }: { value: string }) => answer.set(text)}
+            onSubmit={() => {
+              if (!busy() && canSignIn()) void signIn();
+            }}
+            style={{ height: 28, paddingHorizontal: 8, fontSize: 14, color: palette().text, backgroundColor: palette().bg }}
+          />
+        ) : null}
         <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
           <Button label="Cancel" secondary={true} onPress={() => dialogOpen.set(false)} />
           <Button
             label={busy() ? "Signing in…" : "Sign in"}
-            disabled={busy() || name().length === 0 || pass().length === 0}
+            disabled={busy() || !canSignIn()}
             onPress={signIn}
           />
         </View>

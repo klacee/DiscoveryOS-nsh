@@ -18,7 +18,7 @@ import { palette } from "./appearance";
 import { titleBarShown } from "./TitleBar";
 import { BrowserIcon, LinkIcon, StarIcon } from "./icons";
 import { MessageActions } from "./MessageActions";
-import { pickerOpenOn, quickEmojis, reactionsOn, toggleReaction } from "./reactions";
+import { EMOJI_REACTIONS_ON, pickerOpenOn, quickEmojis, reactionsOn, toggleReaction } from "./reactions";
 import { ReplyCard, type ReplyComment } from "./ReplyCard";
 import { ReplyBox } from "./ReplyBox";
 import { attachmentTag, createAttachments } from "./attachments";
@@ -408,10 +408,13 @@ export function Thread(props: {
     if (target && emoji) toggleReaction(target.id, emoji);
   };
   const reactEnabled = (n: number) => () => keysOn() && !editing() && replies().some((r) => r.seq === hovered()) && !!quickEmojis()[n - 1];
-  useCommand("thread.react1", { enabled: reactEnabled(1), run: () => reactWithQuick(1) });
-  useCommand("thread.react2", { enabled: reactEnabled(2), run: () => reactWithQuick(2) });
-  useCommand("thread.react3", { enabled: reactEnabled(3), run: () => reactWithQuick(3) });
-  useCommand("thread.react4", { enabled: reactEnabled(4), run: () => reactWithQuick(4) });
+  // Registered only while reactions are on: an unregistered command is left out of the shortcut list.
+  if (EMOJI_REACTIONS_ON) {
+    useCommand("thread.react1", { enabled: reactEnabled(1), run: () => reactWithQuick(1) });
+    useCommand("thread.react2", { enabled: reactEnabled(2), run: () => reactWithQuick(2) });
+    useCommand("thread.react3", { enabled: reactEnabled(3), run: () => reactWithQuick(3) });
+    useCommand("thread.react4", { enabled: reactEnabled(4), run: () => reactWithQuick(4) });
+  }
 
   // Load the first page and the saved draft once.
   if (props.focusPid) void showFloor(props.focusPid);
@@ -526,20 +529,22 @@ export function Thread(props: {
             // Hovering a post shows its bar: the quick emojis, and quote, edit and delete. Edit and
             // delete are the signed-in user's own posts only, and floor 1 is not deleted from here.
             actionBar={
-              <MessageActions
-                pid={item().id}
-                quick={quickEmojis}
-                onClose={() => {
-                  if (hovered() === item().seq) hovered.set(null);
-                }}
-                mine={() => reactionsOn(item().id)}
-                onReact={(emoji) => toggleReaction(item().id, emoji)}
-                onQuote={props.signedIn ? () => quote(item()) : undefined}
-                onEdit={props.signedIn && isOwn(item()) ? () => void startEdit(item()) : undefined}
-                onDelete={props.signedIn && isOwn(item()) && item().seq !== 1 ? () => pendingDelete.set({ pid: item().id, seq: item().seq }) : undefined}
-              />
+              EMOJI_REACTIONS_ON || props.signedIn ? (
+                <MessageActions
+                  pid={item().id}
+                  quick={quickEmojis}
+                  onClose={() => {
+                    if (hovered() === item().seq) hovered.set(null);
+                  }}
+                  mine={() => reactionsOn(item().id)}
+                  onReact={(emoji) => toggleReaction(item().id, emoji)}
+                  onQuote={props.signedIn ? () => quote(item()) : undefined}
+                  onEdit={props.signedIn && isOwn(item()) ? () => void startEdit(item()) : undefined}
+                  onDelete={props.signedIn && isOwn(item()) && item().seq !== 1 ? () => pendingDelete.set({ pid: item().id, seq: item().seq }) : undefined}
+                />
+              ) : null
             }
-            reactions={() => reactionsOn(item().id)}
+            reactions={EMOJI_REACTIONS_ON ? () => reactionsOn(item().id) : undefined}
             onReactionPress={(emoji) => toggleReaction(item().id, emoji)}
             body={
               <View style={{ gap: 12, alignSelf: "stretch" }}>
@@ -557,6 +562,7 @@ export function Thread(props: {
                     // A 4d4y thread link opens in this column; a file the post attaches is saved to Downloads;
                     // any other link opens in the system browser.
                     // A quote's arrow goes to its floor (see `openFloor`).
+                    consoleDebug(`link: press ${JSON.stringify({ url: e.url, seq: item().seq })}`);
                     const floor = floorFromLink(e.url);
                     if (floor) {
                       openFloor(floor.pid, floor.ptid);

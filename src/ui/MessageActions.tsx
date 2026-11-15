@@ -5,7 +5,7 @@ import { Overlay, signal, Text, View, type ViewRef } from "nsh";
 import { palette } from "./appearance";
 import { PencilIcon, QuoteIcon, SmileIcon, TrashIcon } from "./icons";
 import { hint } from "./Hint";
-import { pickerOpenOn } from "./reactions";
+import { EMOJI_REACTIONS_ON, pickerOpenOn } from "./reactions";
 
 /** The emojis the "more" picker offers, beyond the quick bar. */
 export const EMOJI_CHOICES = [
@@ -77,7 +77,7 @@ export function MessageActions(props: {
           boxShadow: CHIP_SHADOW,
         }}
       >
-        {props.quick().map((emoji, i) => (
+        {EMOJI_REACTIONS_ON ? props.quick().map((emoji, i) => (
           <View
             onPress={() => reactFromBar(emoji)}
             accessibilityLabel={`React ${emoji}`}
@@ -87,7 +87,8 @@ export function MessageActions(props: {
           >
             <Text style={{ fontSize: 15 }}>{emoji}</Text>
           </View>
-        ))}
+        )) : null}
+        {EMOJI_REACTIONS_ON ? (
         <View
           onPress={() => open(!picking())}
           accessibilityLabel="More emoji"
@@ -97,6 +98,7 @@ export function MessageActions(props: {
         >
           <SmileIcon size={16} />
         </View>
+        ) : null}
         {props.onQuote ? (
           <View onPress={props.onQuote} accessibilityLabel="Quote" tooltip={hint("引用 (q)")} {...CELL_FEEDBACK} style={CELL}>
             <QuoteIcon size={16} />
@@ -114,7 +116,7 @@ export function MessageActions(props: {
         ) : null}
       </View>
       {/* The picker sits under the bar, aligned to its right edge, above everything on the page. */}
-      {picking() && bar() ? (
+      {EMOJI_REACTIONS_ON && picking() && bar() ? (
         <Overlay anchor={bar()} placement="bottom" align="end" offset={6} onPressOutside={closeFromOutside} onCancel={closeFromOutside}>
           <View
             style={{

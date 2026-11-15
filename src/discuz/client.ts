@@ -19,7 +19,9 @@ const POSTBOX = /<div class="postbox">([\s\S]*?)<\/div>/;
 const AJAX_REFUSAL = /messagehandle_fastpost\('[^']*', '([^']*)'\)/;
 const PAGE_SIZE = /name="pppnew" value="(\d+)" checked="checked"/;
 
-export type Session = { name: string; pass: string };
+// `question` is the security question's `questionid` (0 for none) and `answer` its answer. Both are kept
+// only in memory, for re-logins during this run; they are not saved with the password.
+export type Session = { name: string; pass: string; question?: number; answer?: string };
 
 let session: Session | null = null;
 let formHash: string | null = null;
@@ -64,7 +66,7 @@ export async function request(
     if (fresh) formHash = fresh;
   }
   if (retry && isLoginRequired(html) && session) {
-    const relogged = await reLogin(session.name, session.pass);
+    const relogged = await reLogin(session.name, session.pass, session.question, session.answer);
     if (relogged) return request(method, path, { query, form, retry: false, cookie });
   }
   return html;
@@ -85,9 +87,16 @@ export async function findFloor(tid: string, pid: string): Promise<{ html: strin
   return { html, page: Number(new URL(url).searchParams.get("page")) || 1 };
 }
 
-async function dologin(name: string, pass: string): Promise<string | undefined> {
+async function dologin(name: string, pass: string, question = 0, answer = ""): Promise<string | undefined> {
+  // The login form sends its security question every time: `questionid=0` with an empty answer for none.
   const html = await request("POST", "logging.php?action=login&loginsubmit=yes", {
-    form: [["username", name], ["password", pass], ["loginsubmit", "true"]],
+    form: [
+      ["username", name],
+      ["password", pass],
+      ["questionid", String(question)],
+      ["answer", question === 0 ? "" : answer],
+      ["loginsubmit", "true"],
+    ],
     retry: false,
   });
   return parseFormHash(html);
@@ -97,9 +106,9 @@ async function dologin(name: string, pass: string): Promise<string | undefined> 
 // share its answer, so a burst of loads logs in once rather than once each.
 let loginInFlight: Promise<string | undefined> | null = null;
 
-function reLogin(name: string, pass: string): Promise<string | undefined> {
+function reLogin(name: string, pass: string, question?: number, answer?: string): Promise<string | undefined> {
   // The new login's form hash replaces the old one: every write sends it, and the old one is refused.
-  loginInFlight ??= dologin(name, pass)
+  loginInFlight ??= dologin(name, pass, question, answer)
     .then((hash) => {
       if (hash) formHash = hash;
       return hash;
@@ -117,14 +126,14 @@ async function loadConfig(): Promise<void> {
 }
 
 /** Logs in; on success keeps the credentials for re-login and loads the config. */
-export async function login(name: string, pass: string): Promise<boolean> {
-  const hash = await dologin(name, pass);
+export async function login(name: string, pass: string, question = 0, answer = ""): Promise<boolean> {
+  const hash = await dologin(name, pass, question, answer);
   if (!hash) {
     session = null;
     formHash = null;
     return false;
   }
-  session = { name, pass };
+  session = { name, pass, question, answer };
   formHash = hash;
   await loadConfig();
   return true;
@@ -149,7 +158,9 @@ export async function logout(): Promise<void> {
  * the saved password signs in again. A network failure keeps everything saved:
  * only a refused password clears it.
  */
-export async function restoreSession(saved: { name: string; pass: string } | null): Promise<"signed-in" | "signed-out" | "offline"> {
+export async function restoreSession(
+  saved: { name: string; pass: string; question?: number; answer?: string } | null,
+): Promise<"signed-in" | "signed-out" | "offline"> {
   try {
     const html = await request("GET", "index.php", { retry: false });
     const hash = parseFormHash(html);
@@ -166,7 +177,7 @@ export async function restoreSession(saved: { name: string; pass: string } | nul
   }
   if (!saved) return "signed-out";
   try {
-    return (await login(saved.name, saved.pass)) ? "signed-in" : "signed-out";
+    return (await login(saved.name, saved.pass, saved.question, saved.answer)) ? "signed-in" : "signed-out";
   } catch {
     return "offline";
   }
@@ -287,6 +298,9 @@ async function uploadToBox(box: ReplyBox, file: File, kind: "image" | "file"): P
 /** A reply the forum refused; its message is the forum's own words, shown to the user. */
 export class ReplyRefused extends Error {}
 
+/** The small tag under every reply sent from this client, like a forum signature: a linked name in the smallest font. */
+export const REPLY_TAIL = "[url=https://www.4d4y.com/forum/viewthread.php?tid=3476252][size=1]Discovery[/size][/url]";
+
 /** Posts a reply to a thread (`DiscuzAPI.postReply`). Resolves on success;
  * rejects with the page's own message when Discuz refuses it. The image
  * attachments the text inserts (`[attachimg]`) go with it. */
@@ -294,7 +308,8 @@ export async function postReply(fid: string, tid: string, content: string): Prom
   if (!formHash) throw new Error("Not signed in");
   // The Swift app sends `\n` as CRLF and escapes characters outside the
   // CJK range as numeric references, then percent-encodes the GB18030 bytes.
-  const message = htmlEntities(content.replace(/\n/g, "\r\n"));
+  // The tail follows the text on the same line, in the smallest font, as a superscript-like tag.
+  const message = htmlEntities(`${content}  ${REPLY_TAIL}`.replace(/\n/g, "\r\n"));
   const ids = attachedIds(content);
   const extra: [string, string][] = [];
   if (ids.length > 0) {

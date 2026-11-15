@@ -7,7 +7,9 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import handler
-from tests.test_core import MemoryStore, canonical_message, b64url, new_identity
+from marker import MARKER
+from reactions import read_message
+from tests.test_core import MemoryStore, b64url, canonical_message, new_identity
 
 
 def http_event(method, path, body=None, query=None):
@@ -39,19 +41,27 @@ class HandlerTests(unittest.TestCase):
     def test_unknown_route_and_wrong_method(self):
         self.assertEqual(self.call(http_event("GET", "/nope"))[0], 404)
         self.assertEqual(self.call(http_event("PUT", "/reactions"))[0], 405)
+        self.assertEqual(self.call(http_event("GET", "/bind/complete"))[0], 405)
 
     def test_invalid_event(self):
         self.assertEqual(handler.handler("not json", Ctx())["statusCode"], 400)
 
-    def test_signed_add_then_counts(self):
-        body_ts = int(time.time())
-        msg = canonical_message("add", "42", "1001", "👍", body_ts, "abcdefgh12")
-        body = {
-            "uid": "42", "pid": "1001", "emoji": "👍", "action": "add",
-            "ts": body_ts, "nonce": "abcdefgh12", "sig": b64url(self.private.sign(msg)),
-        }
+    def test_reads_without_a_signature_are_refused(self):
+        status, _ = self.call(http_event("GET", "/reactions", query={"pids": "1001"}))
+        self.assertEqual(status, 400)
+
+    def test_signed_add_then_signed_read(self):
+        ts = int(time.time())
+        msg = canonical_message("add", "42", "1001", "👍", ts, "abcdefgh12")
+        body = {"uid": "42", "pid": "1001", "emoji": "👍", "action": "add",
+                "ts": ts, "nonce": "abcdefgh12", "sig": b64url(self.private.sign(msg))}
         self.assertEqual(self.call(http_event("POST", "/reactions", body))[0], 200)
-        status, payload = self.call(http_event("GET", "/reactions", query={"pids": "1001"}))
+
+        pids = "1001"
+        rmsg = read_message("42", pids, ts, "readnonce1")
+        query = {"uid": "42", "pids": pids, "ts": str(ts), "nonce": "readnonce1",
+                 "sig": b64url(self.private.sign(rmsg))}
+        status, payload = self.call(http_event("GET", "/reactions", query=query))
         self.assertEqual(status, 200)
         self.assertEqual(payload["counts"]["1001"], {"👍": 1})
 
@@ -59,6 +69,11 @@ class HandlerTests(unittest.TestCase):
         event = http_event("POST", "/reactions")
         event["body"] = json.dumps(["not", "an", "object"])
         self.assertEqual(self.call(event)[0], 400)
+
+    def test_bind_challenge_route(self):
+        status, payload = self.call(http_event("POST", "/bind/challenge", {"uid": "77"}))
+        self.assertEqual(status, 200)
+        self.assertGreaterEqual(len(payload["nonce"]), 16)
 
 
 if __name__ == "__main__":

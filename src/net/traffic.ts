@@ -6,7 +6,7 @@ import { consoleDebug } from "../debugLog";
 
 const BODY_LOG_LIMIT = 20_000;
 // Header names and form field names whose values are never printed.
-const SECRET_NAME = /pass|cookie|authorization|token|secret/i;
+const SECRET_NAME = /pass|cookie|authorization|token|secret|answer/i;
 
 const utf8 = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 
