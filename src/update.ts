@@ -15,9 +15,19 @@ export const UPDATE_MANIFEST_URL = "https://github.com/nicoster/DiscoveryOS-nsh/
 
 const CHECK_DELAY_MS = 3000;
 
+/** The current time, as the About panel shows it: `2026-11-16 13:59 UTC`. */
+function utcStamp(): string {
+  return `${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
 /** Records what the last check did, for the About panel (kept by the native side). */
 function record(result: string): void {
-  Updater.recordCheck(`${new Date().toISOString().slice(0, 16).replace("T", " ")} UTC · ${result}`);
+  Updater.recordCheck(`${utcStamp()} · ${result}`);
+}
+
+/** Records a downloaded update: the time, then the build it is (About shows it, then the 立即生效 choice). */
+function recordReady(manifest: Manifest): void {
+  Updater.recordCheck(`${utcStamp()} · ${manifest.version} (build ${buildHex(manifest.build)})`);
 }
 
 /** The manifest's package, when it is newer than the running build; otherwise `null`. Applies the
@@ -78,6 +88,18 @@ export async function installUpdate(manifest: Manifest): Promise<string> {
   return Updater.activate(path, manifest.sha256);
 }
 
+/** Applies the waiting update now (the account row's button and the About panel's Now button). */
+export function applyUpdateNow(): void {
+  const manifest = availableUpdate();
+  if (!manifest) return;
+  notify("update", `正在更新到 ${manifest.version}…`);
+  installUpdate(manifest)
+    .then((result) => {
+      if (result.startsWith("err")) notify("update", "更新失败，请稍后再试");
+    })
+    .catch(() => notify("update", "更新失败，请稍后再试"));
+}
+
 /** Whether a check the user asked for (the menu's 检查更新…) is running. The menu greys its item meanwhile. */
 export const checkingUpdate = signal(false);
 
@@ -96,7 +118,7 @@ export async function checkForUpdateNow(): Promise<void> {
     record(`downloading ${manifest.version} (build ${buildHex(manifest.build)})`);
     await download(manifest);
     availableUpdate.set(manifest);
-    record(`${manifest.version} (build ${buildHex(manifest.build)}) ready; applies on restart`);
+    recordReady(manifest);
     notify("update", `新版本 ${manifest.version}（build ${buildHex(manifest.build)}）已下载，点击左下角下载按钮即可立即更新`);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -125,7 +147,7 @@ export function startUpdateCheck(): void {
         record(`downloading ${manifest.version} (build ${buildHex(manifest.build)})`);
         await download(manifest);
         availableUpdate.set(manifest);
-        record(`${manifest.version} (build ${buildHex(manifest.build)}) ready; applies on restart`);
+        recordReady(manifest);
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);

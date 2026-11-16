@@ -11,7 +11,7 @@ import { notify, Toaster } from "./src/ui/toast";
 import { DownloadIcon, ThemeIcon } from "./src/ui/icons";
 import { hint } from "./src/ui/Hint";
 import { hideSystemTitleBar } from "./src/ui/TitleBar";
-import { availableUpdate, installUpdate, startUpdateCheck } from "./src/update";
+import { applyUpdateNow, availableUpdate, startUpdateCheck } from "./src/update";
 import { updateTitle } from "./src/updateManifest";
 import { appearanceMode, appearanceName, cycleAppearance, palette, restoreAppearance, type AppearanceMode } from "./src/ui/appearance";
 import { installMenu } from "./src/ui/commands";
@@ -318,16 +318,7 @@ function App() {
   };
 
   // An update the user can apply now; a downloaded one also applies at the next start.
-  const applyUpdate = () => {
-    const manifest = availableUpdate();
-    if (!manifest) return;
-    notify("update", `正在更新到 ${manifest.version}…`);
-    installUpdate(manifest)
-      .then((result) => {
-        if (result.startsWith("err")) notify("update", "更新失败，请稍后再试");
-      })
-      .catch(() => notify("update", "更新失败，请稍后再试"));
-  };
+  const applyUpdate = applyUpdateNow;
 
   // The account row and its controls sit at the bottom of the channel column,
   // as the Claude Code sidebar keeps its account at the bottom left. Signed out,
