@@ -1,7 +1,7 @@
 // The signed-in screens in three columns, as the Swift app's split view:
 // channels | a channel's threads (or favorites) | the open thread.
 // Components run once, so the views switch inside JSX, not by early return.
-import { cleanup, createAnimatedValue, createMotion, effect, Overlay, type ViewRef, LayoutAnimation, List, reduceMotion, Scroll, signal, Text, untracked, View, windowSize, type JSX } from "nsh";
+import { batch, cleanup, createAnimatedValue, createMotion, effect, Overlay, type ViewRef, LayoutAnimation, List, reduceMotion, Scroll, signal, Text, untracked, View, windowSize, type JSX } from "nsh";
 import { onEscape } from "./escape";
 import { ShortcutsHelp } from "./ShortcutsHelp";
 import { shortcutRows, useCommand } from "./commands";
@@ -189,8 +189,15 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
   const thread = signal<Post | null>(null);
   // Threads opened from a 4d4y link in the open thread, the last one shown in its column; Back pops one.
   // The threads column and its selection stay as they were.
-  // Threads opened from a link in the open thread, the last one shown. `focus` is the floor a link opened.
-  const detour = signal<(Post & { focus?: string })[]>([]);
+  // Threads opened from a link in the open thread, the last one shown. `focus` is the floor a link opened;
+  // `from` is the floor in the thread before it that the link was pressed in, which Back returns to.
+  const detour = signal<(Post & { focus?: string; from?: string })[]>([]);
+  // The floor Back returned to in the thread now shown, set until the next link or thread opens.
+  const resumeFloor = signal<string | undefined>(undefined);
+  function clearDetour() {
+    resumeFloor.set(undefined);
+    detour.set([]);
+  }
   const posts = signal<Post[]>([]);
   const page = signal(1);
   const more = signal(false);
@@ -406,7 +413,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
   // Opens a list: from the cache at once when it is there, placeholder rows otherwise;
   // either way its first page is fetched and replaces what is shown.
   function openList(key: string, load: (n: number) => Promise<Post[]>) {
-    detour.set([]);
+    clearDetour();
     const cached = listCache.get(key);
     posts.set(cached ? cached.items : []);
     more.set(cached ? cached.more : true);
@@ -510,7 +517,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
       rows.push({ kind: "header", title: s.title });
       for (const p of s.posts) rows.push({ kind: "post", post: p });
     }
-    detour.set([]);
+    clearDetour();
     historyRows.set(rows);
     posts.set(sections.flatMap((s) => s.posts));
     more.set(false);
@@ -540,12 +547,12 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
   function openThread(p: Post) {
     composing.set(false);
     if (messages()) {
-      detour.set([]);
+      clearDetour();
       peer.set(p);
       return;
     }
     // Opened from the history, the thread shows as it does from its channel.
-    detour.set([]);
+    clearDetour();
     thread.set(p);
     // A thread opened from a list is recorded. A 4d4y link's thread opens through openLinkedThread instead, and is not.
     recordView(p);
@@ -553,12 +560,19 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
   }
 
   // A 4d4y thread link pressed in the open thread: its thread replaces the column's, until Back.
-  function openLinkedThread(tid: string, pid?: string) {
-    detour.set([...detour(), { id: tid, title: "", focus: pid }]);
+  function openLinkedThread(tid: string, pid?: string, from?: string) {
+    resumeFloor.set(undefined);
+    detour.set([...detour(), { id: tid, title: "", focus: pid, from }]);
   }
 
+  // Back pops the last thread and returns to the floor its link was pressed in, in the thread before it.
+  // Both writes land together: the thread column reads the floor only when it mounts, so it must see the floor with the stack.
   function backFromLink() {
-    detour.set(detour().slice(0, -1));
+    const left = detour()[detour().length - 1];
+    batch(() => {
+      resumeFloor.set(left?.from);
+      detour.set(detour().slice(0, -1));
+    });
   }
 
   // Shows the threads whose titles contain `term`, in the threads column. The channel or
@@ -612,6 +626,11 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
     run: openSearchFromKey,
   });
   useCommand("forum.shortcuts", { run: () => shortcutsOpen.set(!shortcutsOpen()) });
+  // `mod+b` folds the channel column into its rail, or opens it again, as the sidebar button does.
+  useCommand("forum.toggleChannels", {
+    enabled: () => wide() && !shortcutsOpen(),
+    run: toggleChannelsCollapsed,
+  });
   useCommand("forum.refresh", {
     enabled: () => !nothingPicked() && !shortcutsOpen(),
     run: () => refreshThreads(),
@@ -1098,7 +1117,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
             fid={detour().length > 0 ? "" : (shownThread()!.fid ?? channel()?.id ?? "")}
             post={shownThread()!}
             signedIn={!!props.user()}
-            focusPid={detour().length > 0 ? detour()[detour().length - 1].focus : undefined}
+            focusPid={resumeFloor() ?? (detour().length > 0 ? detour()[detour().length - 1].focus : undefined)}
             onOpenThread={openLinkedThread}
             onBack={detour().length > 0 ? backFromLink : undefined}
             shortcutsOpen={() => shortcutsOpen()}

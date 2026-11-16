@@ -15,6 +15,11 @@ export interface Palette {
   selected: string;
   /** The faint tint of a reply under the pointer; lighter than `selected`, which is for selections. */
   replyHighlight: string;
+  /** The yellow of a post the list has just jumped to, shown for a moment. */
+  jumpHighlight: string;
+  /** The top and bottom colours of a comment card's vertical gradient. */
+  commentTop: string;
+  commentBottom: string;
   danger: string;
   button: string;
   buttonText: string;
@@ -30,6 +35,9 @@ const LIGHT: Palette = {
   surface: "#f6f8fa",
   selected: "#dbe4ff",
   replyHighlight: "#f9fcfe",
+  jumpHighlight: "#fff3bf",
+  commentTop: "#f0f3f6",
+  commentBottom: "#ffffff",
   danger: "#cf222e",
   button: "#1f2328",
   buttonText: "#ffffff",
@@ -45,6 +53,9 @@ const DARK: Palette = {
   surface: "#161b22",
   selected: "#1c2d4a",
   replyHighlight: "#1a2334",
+  jumpHighlight: "#3b3416",
+  commentTop: "#0d1117",
+  commentBottom: "#2a3440",
   danger: "#f85149",
   button: "#e6edf3",
   buttonText: "#0d1117",

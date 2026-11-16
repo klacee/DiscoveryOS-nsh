@@ -1,6 +1,6 @@
 // One post in the forum's style: the avatar on the left, and beside it the meta line over
 // the body. Threads and private-message conversations both show their posts this way.
-import { Image, Text, View, type JSX } from "nsh";
+import { Image, Text, View, type JSX, type ViewRef } from "nsh";
 import { palette } from "./appearance";
 
 /** A reply that quotes this post, shown under it as a comment: its author, floor and text. */
@@ -28,6 +28,10 @@ export function ReplyCard(props: {
   onCommentPress?: (pid: string) => void;
   /** Whether the post is highlighted (the pointer is over it, so `q` quotes it). */
   highlighted?: () => boolean;
+  /** Whether the post is the one the list has just jumped to, shown in yellow for a moment. */
+  flashed?: () => boolean;
+  /** Receives the post's own card, so the list can tell whether it is on screen. */
+  cardRef?: (n: ViewRef | null) => void;
   onHoverIn?: () => void;
   onHoverOut?: () => void;
 }) {
@@ -36,6 +40,7 @@ export function ReplyCard(props: {
   return (
     <View style={{ alignSelf: "stretch" }}>
       <View
+        ref={(n: ViewRef | null) => props.cardRef?.(n)}
         onMouseEnter={props.onHoverIn}
         onMouseLeave={props.onHoverOut}
         style={{
@@ -48,7 +53,7 @@ export function ReplyCard(props: {
           gap: 8,
           padding: 10,
           borderRadius: 8,
-          backgroundColor: props.highlighted?.() ? palette().replyHighlight : palette().surface,
+          backgroundColor: props.flashed?.() ? palette().jumpHighlight : props.highlighted?.() ? palette().replyHighlight : palette().surface,
         }}
       >
         {/* Two columns, as the Swift app: the avatar on the left, and beside it the meta line
@@ -56,7 +61,7 @@ export function ReplyCard(props: {
         {props.avatar ? <Image src={props.avatar} style={{ width: 36, height: 36, borderRadius: 6 }} /> : <View style={{ width: 36 }} />}
         <View style={{ flex: 1, gap: 6 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ fontSize: 13, color: palette().text }}>{props.name}</Text>
+            <Text style={{ fontSize: 13, fontWeight: 600, color: palette().text }}>{props.name}</Text>
             {props.isOp ? (
               <View style={{ paddingHorizontal: 2, paddingVertical: 1, borderRadius: 4, backgroundColor: palette().border }}>
                 <Text style={{ fontSize: 11, color: palette().muted }}>楼主</Text>
@@ -96,18 +101,24 @@ export function ReplyCard(props: {
       </View>
       {/* Read inside the JSX, so the row follows the comments as its reply changes (a row is reused for other replies). */}
       {props.comments && props.comments().length > 0 ? (
-        <View style={{ gap: 8, marginLeft: 44, marginRight: -5, marginTop: -6 }}>
-          {props.comments().map((c) => (
+        // Relative and above the highlighted post (z 10), so the comment cards are not covered by its hover layer.
+        // The comment cards overlap like the post: each is pulled up over the one above, and later cards paint on top.
+        <View style={{ position: "relative", zIndex: 11, marginLeft: 44, marginRight: -5, marginTop: -6 }}>
+          {props.comments().map((c, i) => (
             <View
               onPress={() => props.onCommentPress?.(c.id)}
               accessibilityLabel="跳到这条回复"
               style={{
+                position: "relative",
+                marginTop: i > 0 ? -6 : 0,
                 gap: 4,
                 padding: 10,
-                borderRadius: 8,
+                borderRadius: 14,
                 borderWidth: 1,
                 borderColor: palette().border,
                 backgroundColor: palette().surface,
+                // Darker at the top, lighter at the bottom.
+                backgroundImage: `linear-gradient(to bottom, ${palette().commentTop}, ${palette().commentBottom})`,
               }}
             >
               <Text style={{ fontSize: 12, color: palette().muted }}>{`${c.name} · #${c.seq}`}</Text>

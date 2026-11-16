@@ -421,6 +421,24 @@ export function quotedFloor(body: string, ptid: string): string | undefined {
   return link[1];
 }
 
+// The reply header a reply opens with: `回复 <a>N#</a> <i>name</i>`, the `N#` a `findpost` link to floor N.
+const REPLY_HEADER = /^(?:\s|<[^>]+>)*回复\s*<a\b[^>]*href="[^"]*redirect\.php\?goto=findpost(?:&amp;|&)pid=(\d+)(?:&amp;|&)ptid=(\d+)"[\s\S]*?<\/strong>/i;
+
+/**
+ * The floor a reply answers by its header (`回复 N# name` at the start of its body). `undefined` when
+ * the reply opens with no such header to a floor of `ptid`.
+ */
+export function repliedFloor(body: string, ptid: string): string | undefined {
+  const head = REPLY_HEADER.exec(body);
+  if (!head || head[2] !== ptid) return undefined;
+  return head[1];
+}
+
+/** The body with its reply header (`回复 N# name`) removed. */
+export function bodyWithoutReplyHeader(body: string): string {
+  return body.replace(REPLY_HEADER, "");
+}
+
 /**
  * The body with the attribution of each outermost quote that names a floor of `ptid` marked with that
  * floor's id (`data-floor`): the quote's first `<font>`, which holds its "author 发表于 time" line.

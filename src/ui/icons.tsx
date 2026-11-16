@@ -12,70 +12,51 @@ import themeDarkSvg from "./theme-dark.svg";
 import downloadSvg from "./download.svg";
 import type { AppearanceMode } from "./appearance";
 
+// The Chrome logo (Simple Icons, CC0) and the link chain, as the paths of the SVGs they were drawn
+// from (24 units square). They are drawn here, not loaded from files, so a hot update needs no new file.
+const CHROME_PATH =
+  "M12 0C8.21 0 4.831 1.757 2.632 4.501l3.953 6.848A5.454 5.454 0 0 1 12 6.545h10.691A12 12 0 0 0 12 0zM1.931 5.47A11.943 11.943 0 0 0 0 12c0 6.012 4.42 10.991 10.189 11.864l3.953-6.847a5.45 5.45 0 0 1-6.865-2.29zm13.342 2.166a5.446 5.446 0 0 1 1.45 7.09l.002.001h-.002l-5.344 9.257c.206.01.413.016.621.016 6.627 0 12-5.373 12-12 0-1.54-.29-3.011-.818-4.364zM12 16.364a4.364 4.364 0 1 1 0-8.728 4.364 4.364 0 0 1 0 8.728Z";
+const LINK_PATHS = [
+  "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",
+  "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
+];
+
 // Drawn in code, not from an .svg file: a hot update cannot add image files to the app (see
 // `runner/main.rs`), so icons that ship later must not depend on one.
 const LINE = 1.25;
 
-/** The drawing context a `Canvas` hands its `draw` callback. */
-type Ctx = Parameters<NonNullable<Parameters<typeof Canvas>[0]["draw"]>>[0];
-
-/** A stroked capsule (a rounded bar) from `(x1, y1)` to `(x2, y2)` with radius `r`. */
-function capsule(cx: Ctx, x1: number, y1: number, x2: number, y2: number, r: number): void {
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-  const side = angle + Math.PI / 2;
-  cx.beginPath();
-  cx.moveTo(x1 + r * Math.cos(side), y1 + r * Math.sin(side));
-  cx.lineTo(x2 + r * Math.cos(side), y2 + r * Math.sin(side));
-  cx.arc(x2, y2, r, side, side - Math.PI, true);
-  cx.lineTo(x1 - r * Math.cos(side), y1 - r * Math.sin(side));
-  cx.arc(x1, y1, r, side - Math.PI, side - 2 * Math.PI, true);
-  cx.closePath();
-}
-
-/** The open-in-browser icon: the Chrome logo as a thin line (a ring, a hub and three spokes). */
+/** The open-in-browser icon: the Chrome logo, filled in the muted theme color. */
 export function BrowserIcon(props: { size: number }) {
   return (
     <Canvas
       style={{ width: props.size, height: props.size }}
       draw={(cx, size) => {
         const s = size.width;
-        const mid = s / 2;
-        const color = palette().muted;
-        cx.strokeStyle = color;
-        cx.fillStyle = color;
-        cx.lineWidth = LINE;
-        cx.beginPath();
-        cx.arc(mid, mid, s * 0.46, 0, Math.PI * 2);
-        cx.stroke();
-        cx.beginPath();
-        cx.arc(mid, mid, s * 0.17, 0, Math.PI * 2);
-        cx.fill();
-        for (const deg of [-90, 30, 150]) {
-          const a = (deg * Math.PI) / 180;
-          cx.beginPath();
-          cx.moveTo(mid + s * 0.17 * Math.cos(a), mid + s * 0.17 * Math.sin(a));
-          cx.lineTo(mid + s * 0.46 * Math.cos(a), mid + s * 0.46 * Math.sin(a));
-          cx.stroke();
-        }
+        cx.save();
+        cx.scale(s / 24, s / 24);
+        cx.fillStyle = palette().muted;
+        cx.fill(new Path2D(CHROME_PATH));
+        cx.restore();
       }}
     />
   );
 }
 
-/** The copy-link icon: two linked bars drawn as thin lines, like the refresh arrow. */
+/** The copy-link icon: two linked chain links drawn as thin lines in the muted theme color. */
 export function LinkIcon(props: { size: number }) {
   return (
     <Canvas
       style={{ width: props.size, height: props.size }}
       draw={(cx, size) => {
         const s = size.width;
+        cx.save();
+        cx.scale(s / 24, s / 24);
         cx.strokeStyle = palette().muted;
-        cx.lineWidth = LINE;
+        cx.lineWidth = 2;
+        cx.lineCap = "round";
         cx.lineJoin = "round";
-        capsule(cx, s * 0.2, s * 0.8, s * 0.48, s * 0.52, s * 0.14);
-        cx.stroke();
-        capsule(cx, s * 0.52, s * 0.48, s * 0.8, s * 0.2, s * 0.14);
-        cx.stroke();
+        for (const d of LINK_PATHS) cx.stroke(new Path2D(d));
+        cx.restore();
       }}
     />
   );

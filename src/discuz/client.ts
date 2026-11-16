@@ -3,6 +3,7 @@
 import { formEncodeGb, fetchGbRequest, htmlEntities, postFormGb, postGbNoRedirect } from "./encoding";
 import { absorbSetCookie, clearCookies, cookieHeader } from "./cookies";
 import { htmlDecode } from "./parse";
+import { shortenLinks } from "./shortLinks";
 
 export const HOST = "https://www.4d4y.com/forum/";
 
@@ -299,7 +300,7 @@ async function uploadToBox(box: ReplyBox, file: File, kind: "image" | "file"): P
 export class ReplyRefused extends Error {}
 
 /** The small tag under every reply sent from this client, like a forum signature: a linked name in the smallest font. */
-export const REPLY_TAIL = "[url=https://www.4d4y.com/forum/viewthread.php?tid=3476252][size=1]Discovery[/size][/url]";
+export const REPLY_TAIL = "[url=https://www.4d4y.com/forum/viewthread.php?tid=3476252][size=1]DiscoveryOS[/size][/url]";
 
 /** Posts a reply to a thread (`DiscuzAPI.postReply`). Resolves on success;
  * rejects with the page's own message when Discuz refuses it. The image
@@ -309,7 +310,7 @@ export async function postReply(fid: string, tid: string, content: string): Prom
   // The Swift app sends `\n` as CRLF and escapes characters outside the
   // CJK range as numeric references, then percent-encodes the GB18030 bytes.
   // The tail follows the text on the same line, in the smallest font, as a superscript-like tag.
-  const message = htmlEntities(`${content}  ${REPLY_TAIL}`.replace(/\n/g, "\r\n"));
+  const message = htmlEntities(`${shortenLinks(content)}  ${REPLY_TAIL}`.replace(/\n/g, "\r\n"));
   const ids = attachedIds(content);
   const extra: [string, string][] = [];
   if (ids.length > 0) {
@@ -502,7 +503,7 @@ export async function postThread(fid: string, subject: string, content: string):
     ["wysiwyg", "1"],
     ["iconid", ""],
     ["subject", htmlEntities(subject.trim())],
-    ["message", htmlEntities(content.replace(/\n/g, "\r\n"))],
+    ["message", htmlEntities(shortenLinks(content).replace(/\n/g, "\r\n"))],
     ["tags", ""],
     ["usesig", "1"],
   ];

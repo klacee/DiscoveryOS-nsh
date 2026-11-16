@@ -19,6 +19,7 @@ export type CommandId =
   | "forum.prev"
   | "forum.compose"
   | "forum.shortcuts"
+  | "forum.toggleChannels"
   | "thread.top"
   | "thread.bottom"
   | "thread.reply"
@@ -50,6 +51,7 @@ const CATALOG: Record<CommandId, Definition> = {
   "forum.prev": { title: "上一个帖子", keys: ["p"], order: 40 },
   "forum.compose": { title: "发新帖", keys: ["c"], order: 50 },
   "forum.shortcuts": { title: "键盘快捷键", keys: ["shift+/"], hint: "?", order: 60 },
+  "forum.toggleChannels": { title: "显示或隐藏板块栏", keys: ["mod+b"], order: 15 },
   "thread.top": { title: "跳到回复顶部", hint: "g g", order: 100 },
   "thread.bottom": { title: "跳到回复底部", keys: ["shift+g"], hint: "G", order: 110 },
   "thread.reply": { title: "回复", keys: ["r"], order: 120 },

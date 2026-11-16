@@ -18,6 +18,7 @@ import { installMenu } from "./src/ui/commands";
 import { CookieImportDialog, cookieImportOpen, setOnCookiesImported } from "./src/ui/CookieImport";
 import { AboutDialog, aboutOpen } from "./src/ui/AboutDialog";
 import { debugEnabled } from "./src/debugLog";
+import { selectedText } from "./src/ui/selection";
 
 // The forum's security questions, in the order its login form lists them. The value is the
 // `questionid` the form sends; "0" sends no question.
@@ -540,6 +541,7 @@ function App() {
   return (
     <View
       selectable={true}
+      onSelectionChange={({ text }) => selectedText.set(text)}
       style={{
         flex: 1,
         paddingTop: "env(safe-area-inset-top)",

@@ -1,19 +1,23 @@
 // A thread's replies, pages, quote and reply draft (`PostDetailView` of the
 // Swift app). The draft is kept per thread in the app's storage.
-import { Clipboard, keymap, List, signal, Storage, Text, View, type PasteEvent, type ListRef } from "nsh";
-import { Dialog, TextView, type TextViewRef } from "nsh/base";
+import { Clipboard, keymap, List, signal, Storage, Text, View, type PasteEvent, type ListRef, type ViewRef } from "nsh";
+import { Dialog, TextView } from "nsh/base";
 import { currentUser, deletePost, editPost, HOST, loadEditForm, postReply, ReplyRefused, uploadAttachment, uploadEditAttachment, type EditForm } from "../discuz/client";
 import { bookmarkPost, clearThreadReplyPages, loadFloorPage, loadReplyPage, removeBookmark } from "../discuz/forum";
-import { absolutize, absoluteUrl, attachmentLinks, bodyWithoutQuote, fixDiscuzMarkup, fixImages, floorFromLink, htmlToText, isAttachmentUrl, markQuoteAttributions, mergePage, quotedFloor, threadIdFromLink, trimLeadingBlanks, type Post, type Reply } from "../discuz/parse";
+import { absolutize, absoluteUrl, attachmentLinks, bodyWithoutQuote, fixDiscuzMarkup, fixImages, floorFromLink, htmlToText, isAttachmentUrl, markQuoteAttributions, mergePage, quotedFloor, repliedFloor, bodyWithoutReplyHeader, threadIdFromLink, trimLeadingBlanks, type Post, type Reply } from "../discuz/parse";
 import { draftToPost, postToDraft, replyQuoteInDraft } from "../discuz/quote";
 import { downloadAttachment } from "./downloads";
 import { DISCUZ_EXTENSIONS, renderDiscuzNode } from "./discuzMarkup";
 import { useCommand } from "./commands";
+import { selectedText } from "./selection";
 import { consoleDebug } from "../debugLog";
 import { openLink } from "./links";
 import { timeAgo } from "../discuz/timeAgo";
 import { LoadingBar } from "./LoadingBar";
 import { notify } from "./toast";
+
+// Text without its whitespace, to find a selection in a reply's text whatever its line breaks.
+const squash = (s: string) => s.replace(/\s+/g, "");
 import { palette } from "./appearance";
 import { captionInset, titleBarShown } from "./TitleBar";
 import { BrowserIcon, LinkIcon, StarIcon } from "./icons";
@@ -61,8 +65,9 @@ export function Thread(props: {
   post: Post;
   signedIn?: boolean;
   onUnfavorited?: () => void;
-  /** Opens a thread; with `pid`, at that floor (a floor link to another thread). */
-  onOpenThread?: (tid: string, pid?: string) => void;
+  /** Opens a thread; with `pid`, at that floor (a floor link to another thread). `from` is the floor
+   *  in this thread the link was pressed in, which Back returns to. */
+  onOpenThread?: (tid: string, pid?: string, from?: string) => void;
   onBack?: () => void;
   shortcutsOpen?: () => boolean;
   /** The floor a link opened in this thread, shown first. */
@@ -157,13 +162,16 @@ export function Thread(props: {
     "无法添加该文件，请尝试把它拖入输入框。",
   );
 
-  // Each reply's text view, by floor: `q` asks the highlighted one for its selected text.
-  const bodyViews = new Map<number, TextViewRef>();
-
   function quote(r: Reply, selected?: string) {
     const text = replyQuoteInDraft(r, props.post.id, selected);
     setDraft(draft() ? `${text}\n\n${draft()}` : `${text}\n`);
   }
+
+  // The reply that is flashing after a jump, the timer that clears it, and the post cards by reply id
+  // (to tell whether a jump needs to scroll). Declared before the list is built, which reads the cards.
+  const flashedPid = signal<string | null>(null);
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+  const cardRefs = new Map<string, ViewRef>();
 
   // The loaded replies that quote each floor, by the quoted floor's id. Rebuilt whenever the loaded
   // list changes (a page that loads later can hold the quoting reply), and read reactively by each row,
@@ -175,9 +183,10 @@ export function Thread(props: {
     if (list !== commentsSource) {
       const next = new Map<string, ReplyComment[]>();
       for (const r of list) {
-        const target = quotedFloor(r.body, props.post.id);
+        // A reply counts as a comment of the floor it quotes, or of the floor its `回复 N#` header names.
+        const target = quotedFloor(r.body, props.post.id) ?? repliedFloor(r.body, props.post.id);
         if (!target || target === r.id) continue;
-        const text = htmlToText(bodyWithoutQuote(r.body));
+        const text = htmlToText(bodyWithoutQuote(bodyWithoutReplyHeader(r.body)));
         // A reply that only quotes says nothing of its own, so it has no comment.
         if (text === "") continue;
         const bucket = next.get(target) ?? [];
@@ -206,16 +215,29 @@ export function Thread(props: {
         return;
       }
     }
+    // A floor already on screen stays where it is; otherwise it is scrolled to 300pt below the top of the list.
+    const listBox = await repliesList?.measure();
+    const cardBox = await cardRefs.get(pid)?.measure();
     const index = replies().findIndex((r) => r.id === pid);
     if (index < 0) return;
+    const onScreen =
+      !!listBox &&
+      !!cardBox &&
+      cardBox.pagePosition.y >= listBox.pagePosition.y &&
+      cardBox.pagePosition.y + cardBox.bounds.size.height <= listBox.pagePosition.y + listBox.bounds.size.height;
     // The list lays out the replies it was given before it can scroll to one of them.
-    setTimeout(() => repliesList?.scrollToIndex({ index, viewPosition: 0 }), 0);
+    if (!onScreen) setTimeout(() => repliesList?.scrollToIndex({ index, viewPosition: 0, viewOffset: 300 }), 0);
+    // The post jumped to shows in yellow for a second, then returns to its own colour.
+    flashedPid.set(pid);
+    clearTimeout(flashTimer);
+    flashTimer = setTimeout(() => flashedPid.set(null), 1000);
   }
 
   // A link to a floor: in this thread the floor is shown here; in another, that thread opens at it.
-  function openFloor(pid: string, tid: string) {
+  // `from` is the floor the link was pressed in, so Back can return to it.
+  function openFloor(pid: string, tid: string, from?: string) {
     if (tid === props.post.id) void showFloor(pid);
-    else props.onOpenThread?.(tid, pid);
+    else props.onOpenThread?.(tid, pid, from);
   }
 
   // The reply the box is editing: its loaded edit form and the text in the box. While it is set, the
@@ -370,22 +392,14 @@ export function Thread(props: {
     run: () => {
       const target = replies().find((r) => r.seq === hovered());
       if (!target) return;
-      // Text selected in the highlighted reply is all that is quoted; otherwise the whole reply.
-      const view = bodyViews.get(target.seq);
-      consoleDebug(`quote: q ${JSON.stringify({ floor: target.seq, viewFound: !!view, viewFloors: [...bodyViews.keys()] })}`);
-      void (async () => {
-        let picked = "";
-        if (view) {
-          try {
-            picked = (await view.selectedText()).trim();
-            consoleDebug(`quote: selectedText ${JSON.stringify({ floor: target.seq, text: picked })}`);
-          } catch (e) {
-            consoleDebug(`quote: selectedText failed ${JSON.stringify({ floor: target.seq, error: String(e) })}`);
-          }
-        }
-        quote(target, picked || undefined);
-        replyField?.focus();
-      })();
+      // Text selected in the highlighted reply is all that is quoted; otherwise the whole reply. The
+      // selection comes from the app's outer selectable view (see `selection.ts`): a reply's own text
+      // view is empty while it sits inside that view.
+      const picked = selectedText().trim();
+      const inReply = picked !== "" && squash(htmlToText(target.body)).includes(squash(picked));
+      consoleDebug(`quote: q ${JSON.stringify({ floor: target.seq, selected: picked.length, inReply })}`);
+      quote(target, inReply ? picked : undefined);
+      replyField?.focus();
     },
   });
   // `e` edits the highlighted reply, when it is the signed-in user's own (the same reply `q` quotes).
@@ -527,8 +541,14 @@ export function Thread(props: {
             isOp={opId() !== undefined && item().author.id === opId()}
             meta={`#${item().seq} · ${timeAgo(item().at)}`}
             comments={() => commentsOn(item().id)}
-            onCommentPress={(pid) => openFloor(pid, props.post.id)}
+            onCommentPress={(pid) => openFloor(pid, props.post.id, item().id)}
             highlighted={() => hovered() === item().seq}
+            flashed={() => flashedPid() === item().id}
+            cardRef={(n) => {
+              // A row is reused for other replies, so an empty ref only forgets this reply's card.
+              if (n) cardRefs.set(item().id, n);
+              else cardRefs.delete(item().id);
+            }}
             onHoverIn={() => hovered.set(item().seq)}
             onHoverOut={() => {
               // The pointer goes to the picker, which is outside the post: the post stays highlighted while it is open.
@@ -561,11 +581,13 @@ export function Thread(props: {
                   styles={item().seq === 1 ? OP_TITLE_STYLES : undefined}
                   extensions={DISCUZ_EXTENSIONS}
                   selectable
-                  ref={(view: TextViewRef) => {
-                    consoleDebug(`quote: ref ${JSON.stringify({ floor: item().seq, set: !!view })}`);
-                    if (view) bodyViews.set(item().seq, view);
-                  }}
-                  renderCustom={(node) => renderDiscuzNode(node, (pid) => openFloor(pid, props.post.id))}
+                  renderCustom={(node) =>
+                    renderDiscuzNode(
+                      node,
+                      (pid) => openFloor(pid, props.post.id, item().id),
+                      (pid) => replies().find((r) => r.id === pid)?.seq,
+                    )
+                  }
                   onLinkPress={(e) => {
                     // A 4d4y thread link opens in this column; a file the post attaches is saved to Downloads;
                     // any other link opens in the system browser.
@@ -573,12 +595,12 @@ export function Thread(props: {
                     consoleDebug(`link: press ${JSON.stringify({ url: e.url, seq: item().seq })}`);
                     const floor = floorFromLink(e.url);
                     if (floor) {
-                      openFloor(floor.pid, floor.ptid);
+                      openFloor(floor.pid, floor.ptid, item().id);
                       return;
                     }
                     const tid = threadIdFromLink(e.url);
                     if (tid && props.onOpenThread) {
-                      props.onOpenThread(tid);
+                      props.onOpenThread(tid, undefined, item().id);
                     } else if (isAttachmentUrl(e.url)) {
                       const file = attachmentLinks(item().body).find((a) => absoluteUrl(a.url, HOST) === e.url);
                       void downloadAttachment(e.url, file?.name ?? "download");
