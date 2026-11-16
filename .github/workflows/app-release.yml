@@ -290,11 +290,13 @@ jobs:
             echo "error: release $tag already exists" >&2
             exit 1
           fi
+          # The title shows the build in hex, as the app's About panel does; the tag and asset names keep the decimal build.
+          build_hex=$(printf '%X' "$BUILD")
           gh release create "$tag" assets/* \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --latest=false \
-            --title "DiscoveryOS $VERSION (build $BUILD) - app" \
+            --title "DiscoveryOS $VERSION (build $build_hex) - app" \
             --notes "Built and published by CI run $RUN_URL"
 
       - name: Dry run (ci-dryrun publishes nothing)

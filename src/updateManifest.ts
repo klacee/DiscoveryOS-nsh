@@ -36,8 +36,13 @@ export function parseManifest(value: unknown): Manifest | null {
   };
 }
 
+/** A build number as shown to people: uppercase hex. The stored build stays a decimal integer. */
+export function buildHex(build: number): string {
+  return build.toString(16).toUpperCase();
+}
+
 /** The update button's tooltip: the build first (what the user needs to tell releases apart), then the notes. */
 export function updateTitle(manifest: Manifest): string {
-  const head = `更新到 ${manifest.version}（构建号 ${manifest.build}）`;
+  const head = `更新到 ${manifest.version}（构建号 ${buildHex(manifest.build)}）`;
   return manifest.notes ? `${head}\n${manifest.notes}` : head;
 }

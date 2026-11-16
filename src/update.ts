@@ -3,7 +3,7 @@
 import { writeFile } from "fs/promises";
 import { signal, Storage } from "nsh";
 import { Updater } from "discoveryos/native";
-import { type Manifest, parseManifest } from "./updateManifest";
+import { buildHex, type Manifest, parseManifest } from "./updateManifest";
 import { notify } from "./ui/toast";
 import { consoleDebug } from "./debugLog";
 
@@ -65,7 +65,7 @@ function announceUpdate(): void {
       if (!text) return;
       const updated = JSON.parse(text) as { build?: unknown; version?: unknown };
       if (updated.build !== Updater.currentBuild()) return;
-      notify("update", `已升级到 ${String(updated.version)} (build ${String(updated.build)})`);
+      notify("update", `已升级到 ${String(updated.version)} (build ${buildHex(Number(updated.build))})`);
       return Storage.setItem(UPDATED_KEY, "");
     })
     .catch(() => undefined);
@@ -76,6 +76,36 @@ export async function installUpdate(manifest: Manifest): Promise<string> {
   const path = Updater.stagingPath(`build-${manifest.build}`);
   if (!path) throw new Error("no place to keep the download");
   return Updater.activate(path, manifest.sha256);
+}
+
+/** Whether a check the user asked for (the menu's 检查更新…) is running. The menu greys its item meanwhile. */
+export const checkingUpdate = signal(false);
+
+/** The user's check, from the menu: says what it found. A newer build is downloaded and kept, as the
+ * automatic check does; it applies at the next start. */
+export async function checkForUpdateNow(): Promise<void> {
+  if (checkingUpdate()) return;
+  checkingUpdate.set(true);
+  try {
+    const manifest = await checkForUpdate();
+    if (!manifest) {
+      record("already up to date");
+      notify("update", `已是最新版本（build ${buildHex(Updater.currentBuild())}）`);
+      return;
+    }
+    record(`downloading ${manifest.version} (build ${buildHex(manifest.build)})`);
+    await download(manifest);
+    availableUpdate.set(manifest);
+    record(`${manifest.version} (build ${buildHex(manifest.build)}) ready; applies on restart`);
+    notify("update", `新版本 ${manifest.version}（build ${buildHex(manifest.build)}）已下载，点击左下角下载按钮即可立即更新`);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    record(`failed: ${message}`);
+    consoleDebug(`update: ${message}`);
+    notify("update", "检查更新失败");
+  } finally {
+    checkingUpdate.set(false);
+  }
 }
 
 /** Once, shortly after start: accepts the last swapped package, then checks. A newer build is downloaded
@@ -92,10 +122,10 @@ export function startUpdateCheck(): void {
           record("already up to date");
           return;
         }
-        record(`downloading ${manifest.version} (build ${manifest.build})`);
+        record(`downloading ${manifest.version} (build ${buildHex(manifest.build)})`);
         await download(manifest);
         availableUpdate.set(manifest);
-        record(`${manifest.version} (build ${manifest.build}) ready; applies on restart`);
+        record(`${manifest.version} (build ${buildHex(manifest.build)}) ready; applies on restart`);
       })
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);

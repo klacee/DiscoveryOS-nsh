@@ -4,6 +4,7 @@
 import { Overlay, signal, Text, View, type ViewRef } from "nsh";
 import { Updater } from "discoveryos/native";
 import { palette } from "./appearance";
+import { buildHex } from "../updateManifest";
 
 /** Whether the About dialog is shown. Set from the menu; read by the app root. */
 export const aboutOpen = signal(false);
@@ -18,34 +19,46 @@ function closeAbout(): void {
 
 // Builds are Unix times, which read better in hex: shown as uppercase digits, no prefix.
 function hexBuild(value: unknown): string {
-  return Number(value ?? 0).toString(16).toUpperCase();
+  return buildHex(Number(value ?? 0));
+}
+
+// A piece of a line. A faint piece is the part the two builds share, drawn dimmer so the part that differs stands out.
+type Segment = { text: string; faint?: boolean };
+
+// The number of leading characters two hex builds share.
+function sharedPrefixLength(a: string, b: string): number {
+  let n = 0;
+  while (n < a.length && n < b.length && a[n] === b[n]) n++;
+  return n;
 }
 
 // The lines About shows, from the runner's JSON (the same fields the macOS panel reads).
-function aboutLines(): string[] {
+function aboutLines(): Segment[][] {
   let info: Record<string, unknown> = {};
   try {
     info = JSON.parse(Updater.aboutInfo()) as Record<string, unknown>;
   } catch {
-    return ["无法获取详细信息。"];
+    return [[{ text: "无法获取详细信息。" }]];
   }
   const source = info.runningSource === "package" ? "更新包" : "内置";
-  const lines = [
-    `版本 ${String(info.runningVersion ?? "?")}`,
-    `运行构建号 ${hexBuild(info.runningBuild)}（${source}）`,
-    `内置版本：${String(info.embeddedVersion ?? "?")} · 构建号 ${hexBuild(info.embeddedBuild)}`,
+  const running = hexBuild(info.runningBuild);
+  const embedded = hexBuild(info.embeddedBuild);
+  const shared = sharedPrefixLength(running, embedded);
+  const hexSegments = (hex: string): Segment[] => [
+    { text: hex.slice(0, shared), faint: true },
+    { text: hex.slice(shared) },
+  ];
+  const lines: Segment[][] = [
+    [{ text: `版本 ${String(info.runningVersion ?? "?")}` }],
+    [{ text: "运行构建号 " }, ...hexSegments(running), { text: `（${source}）` }],
+    [{ text: `内置版本：${String(info.embeddedVersion ?? "?")} · 构建号 ` }, ...hexSegments(embedded)],
   ];
   const pkg = info.package as Record<string, unknown> | null | undefined;
-  if (pkg && typeof pkg === "object") {
-    lines.push(`更新包版本：${String(pkg.version ?? "?")} · 构建号 ${hexBuild(pkg.build)}`);
-    const sha = typeof pkg.sha256 === "string" ? pkg.sha256 : "";
-    lines.push(`SHA-256：${sha.slice(0, 16)}…`);
-    lines.push(`密钥：${String(pkg.keyId ?? "?")}`);
-  } else if (info.pendingSwap === true) {
-    lines.push("更新包：已切换，等待健康检查");
+  if (!(pkg && typeof pkg === "object") && info.pendingSwap === true) {
+    lines.push([{ text: "更新包：已切换，等待健康检查" }]);
   }
   const last = typeof info.lastCheck === "string" ? info.lastCheck : "";
-  lines.push(`上次检查：${last || "尚未检查"}`);
+  lines.push([{ text: `上次检查：${last || "尚未检查"}` }]);
   return lines;
 }
 
@@ -81,7 +94,11 @@ export function AboutDialog() {
         >
           <Text style={{ fontSize: 15, fontWeight: 600, color: palette().text }}>DiscoveryOS</Text>
           {aboutLines().map((line) => (
-            <Text style={{ fontSize: 12, color: palette().muted }}>{line}</Text>
+            <View style={{ flexDirection: "row" }}>
+              {line.map((segment) => (
+                <Text style={{ fontSize: 12, color: palette().muted, opacity: segment.faint ? 0.4 : 1 }}>{segment.text}</Text>
+              ))}
+            </View>
           ))}
           <View
             onPress={closeAbout}

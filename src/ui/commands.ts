@@ -10,6 +10,7 @@ import { debugEnabled } from "../debugLog";
 import { exportCookies } from "../discuz/cookies";
 import { appearanceMode, appearanceName, chooseAppearance, type AppearanceMode } from "./appearance";
 import { openCookieImport } from "./CookieImport";
+import { checkForUpdateNow, checkingUpdate } from "../update";
 
 export type CommandId =
   | "forum.search"
@@ -144,6 +145,11 @@ function aboutItem(): MenuItem {
   return { label: "关于 DiscoveryOS", onSelect: openAbout };
 }
 
+// Checks for a newer build now; greyed while a check is running. Reading the signal here makes the menu rebuild when it changes.
+function checkUpdateItem(): MenuItem {
+  return { label: "检查更新…", disabled: checkingUpdate(), onSelect: () => void checkForUpdateNow() };
+}
+
 function submenu(label: string, items: MenuItem[]): MenuItem {
   return { label, submenu: items };
 }
@@ -178,7 +184,7 @@ function appearanceItem(mode: AppearanceMode): MenuItem {
 // The menu bar, top to bottom. Its items are built each time it is set, so their state is current.
 export function menuBar(): MenuItem[] {
   return [
-    submenu("DiscoveryOS", [aboutItem(), SEPARATOR, role("hide"), role("hideOthers"), role("showAll"), SEPARATOR, role("quit")]),
+    submenu("DiscoveryOS", [aboutItem(), checkUpdateItem(), SEPARATOR, role("hide"), role("hideOthers"), role("showAll"), SEPARATOR, role("quit")]),
     submenu("编辑", [role("undo"), role("redo"), SEPARATOR, role("cut"), role("copy"), role("paste"), role("selectAll")]),
     submenu("论坛", [item("forum.search"), item("forum.refresh"), SEPARATOR, item("forum.next"), item("forum.prev"), item("forum.compose")]),
     submenu("帖子", [

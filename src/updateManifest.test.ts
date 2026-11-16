@@ -20,6 +20,6 @@ test("notes that are not a string make the manifest unusable", () => {
 });
 
 test("the tooltip names the version and build, then the notes", () => {
-  expect(updateTitle({ ...base, build: 23, notes: undefined })).toBe("更新到 1.0.4（构建号 23）");
-  expect(updateTitle({ ...base, build: 23, notes: "fix search" })).toBe("更新到 1.0.4（构建号 23）\nfix search");
+  expect(updateTitle({ ...base, build: 23, notes: undefined })).toBe("更新到 1.0.4（构建号 17）");
+  expect(updateTitle({ ...base, build: 23, notes: "fix search" })).toBe("更新到 1.0.4（构建号 17）\nfix search");
 });
