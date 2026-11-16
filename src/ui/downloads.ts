@@ -28,14 +28,14 @@ export async function saveToDownloads(name: string, bytes: Uint8Array): Promise<
 export async function downloadAttachment(url: string, name: string): Promise<void> {
   if (inFlight.has(url)) return;
   inFlight.add(url);
-  notify(TOAST, `Downloading ${name}…`);
+  notify(TOAST, `正在下载 ${name}…`);
   try {
     const bytes = await fetchAttachment(url, name);
     const path = await saveToDownloads(name, bytes);
-    notify(TOAST, `Saved ${path.split("/").pop()} to Downloads.`);
+    notify(TOAST, `已保存 ${path.split("/").pop()} 到“下载”。`);
   } catch (e) {
-    const reason = e instanceof AttachmentError ? `: ${e.message}` : "";
-    notify(TOAST, `Couldn't download ${name}${reason}.`);
+    const reason = e instanceof AttachmentError ? `：${e.message}` : "";
+    notify(TOAST, `无法下载 ${name}${reason}。`);
   } finally {
     inFlight.delete(url);
   }

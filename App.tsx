@@ -89,21 +89,21 @@ function IconButton(props: { icon: JSX.Element; title: string; disabled?: boolea
 
 // The account menu's profile rows, in order: the label, and the field it shows.
 const MENU_ROWS: [string, keyof Profile][] = [
-  ["Group", "group"],
-  ["Registered", "registered"],
-  ["Last visit", "lastVisit"],
-  ["Last post", "lastPost"],
-  ["Post level", "postLevel"],
-  ["Read permission", "readPermission"],
-  ["Posts", "posts"],
-  ["Daily posts", "dailyPosts"],
-  ["Essence", "essence"],
-  ["Page views", "pageViews"],
-  ["Online, total (h)", "onlineTotal"],
-  ["Online, this month (h)", "onlineThisMonth"],
-  ["Credits", "credits"],
-  ["Prestige", "prestige"],
-  ["Money", "money"],
+  ["用户组", "group"],
+  ["注册时间", "registered"],
+  ["上次访问", "lastVisit"],
+  ["上次发帖", "lastPost"],
+  ["发帖等级", "postLevel"],
+  ["阅读权限", "readPermission"],
+  ["帖子数", "posts"],
+  ["今日发帖", "dailyPosts"],
+  ["精华", "essence"],
+  ["访问量", "pageViews"],
+  ["在线时间，总计（小时）", "onlineTotal"],
+  ["在线时间，本月（小时）", "onlineThisMonth"],
+  ["积分", "credits"],
+  ["威望", "prestige"],
+  ["金钱", "money"],
 ];
 
 function MenuRow(props: { label: string; value: string }) {
@@ -209,10 +209,10 @@ function App() {
         answer.set("");
         dialogOpen.set(false);
       } else {
-        notify("sign-in", "Sign-in failed.");
+        notify("sign-in", "登录失败。");
       }
     } catch (e) {
-      notify("sign-in", `Sign-in failed: ${e}`);
+      notify("sign-in", `登录失败：${e}`);
     } finally {
       busy.set(false);
     }
@@ -259,9 +259,9 @@ function App() {
         else if (state === "signed-out") {
           if (saved) clearCredentials();
           dialogOpen.set(true);
-        } else if (state === "offline") notify("restore", "Offline: the saved login is kept.");
+        } else if (state === "offline") notify("restore", "当前离线，已保留之前的登录状态。");
       })
-      .catch((e) => notify("restore", `Could not restore the login: ${e}`))
+      .catch((e) => notify("restore", `无法恢复登录状态：${e}`))
       .finally(() => busy.set(false));
   }
 
@@ -302,11 +302,11 @@ function App() {
             {(row) => <MenuRow label={row().label} value={row().value} />}
           </Each>
         ) : (
-          <Text style={{ fontSize: 12, color: palette().muted }}>Loading…</Text>
+          <Text style={{ fontSize: 12, color: palette().muted }}>加载中…</Text>
         )}
         <View style={{ height: 1, backgroundColor: palette().border, marginVertical: 4 }} />
         <MenuAction
-          label="Sign Out"
+          label="退出登录"
           onPress={() => {
             closeMenu();
             confirmOpen.set(true);
@@ -341,7 +341,7 @@ function App() {
             <View
               ref={(n: ViewRef | null) => avatarNode.set(n)}
               onPress={menuOpen() ? undefined : openMenu}
-              accessibilityLabel="Account menu"
+              accessibilityLabel="账号菜单"
             >
               {avatar() ? (
                 <Image src={avatar()!} style={{ width: 24, height: 24, borderRadius: 12 }} />
@@ -368,7 +368,7 @@ function App() {
         ) : (
           <View
             onPress={() => dialogOpen.set(true)}
-            accessibilityLabel="Sign in"
+            accessibilityLabel="登录"
             style={{
               width: 24,
               height: 24,
@@ -383,8 +383,8 @@ function App() {
           <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>{user()!}</Text>
         ) : (
           // Signed out, the name's place reads "Sign in" and opens the same dialog as the avatar.
-          <View onPress={() => dialogOpen.set(true)} accessibilityLabel="Sign in" style={{ flex: 1 }}>
-            <Text style={{ fontSize: 13, color: palette().text }}>Sign in</Text>
+          <View onPress={() => dialogOpen.set(true)} accessibilityLabel="登录" style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13, color: palette().text }}>登录</Text>
           </View>
         )}
         {availableUpdate() ? (
@@ -394,7 +394,7 @@ function App() {
             onPress={applyUpdate}
           />
         ) : null}
-        <IconButton icon={<ThemeIcon size={16} mode={appearanceMode} />} title={`Theme: ${appearanceName(appearanceMode())}`} onPress={cycleAppearance} />
+        <IconButton icon={<ThemeIcon size={16} mode={appearanceMode} />} title={`主题：${appearanceName(appearanceMode())}`} onPress={cycleAppearance} />
       </View>
     </View>
   );
@@ -424,15 +424,15 @@ function App() {
           backgroundColor: palette().surface,
         }}
       >
-        <Text style={{ fontSize: 15, fontWeight: 600, color: palette().text }}>Account</Text>
+        <Text style={{ fontSize: 15, fontWeight: 600, color: palette().text }}>账号</Text>
         <Input
-          placeholder="Username"
+          placeholder="用户名"
           value={name()}
           onChange={({ value: text }: { value: string }) => name.set(text)}
           style={{ height: 28, paddingHorizontal: 8, fontSize: 14, color: palette().text, backgroundColor: palette().bg }}
         />
         <Input
-          placeholder="Password"
+          placeholder="密码"
           masked={true}
           value={pass()}
           onChange={({ value: text }: { value: string }) => pass.set(text)}
@@ -445,7 +445,7 @@ function App() {
         <Select
           items={SECURITY_QUESTIONS}
           value={String(question())}
-          accessibilityLabel="Security question"
+          accessibilityLabel="安全问题"
           onChange={({ value: v }: { value: string | null }) => {
             question.set(Number(v ?? 0));
             answer.set("");
@@ -472,7 +472,7 @@ function App() {
         />
         {question() !== 0 ? (
           <Input
-            placeholder="Answer"
+            placeholder="答案"
             value={answer()}
             onChange={({ value: text }: { value: string }) => answer.set(text)}
             onSubmit={() => {
@@ -482,9 +482,9 @@ function App() {
           />
         ) : null}
         <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
-          <Button label="Cancel" secondary={true} onPress={() => dialogOpen.set(false)} />
+          <Button label="取消" secondary={true} onPress={() => dialogOpen.set(false)} />
           <Button
-            label={busy() ? "Signing in…" : "Sign in"}
+            label={busy() ? "登录中…" : "登录"}
             disabled={busy() || !canSignIn()}
             onPress={signIn}
           />
@@ -518,12 +518,12 @@ function App() {
           backgroundColor: palette().surface,
         }}
       >
-        <Text style={{ fontSize: 15, fontWeight: 600, color: palette().text }}>Sign out?</Text>
-        <Text style={{ fontSize: 13, color: palette().text }}>{`Sign out of ${user() ?? "this account"}?`}</Text>
+        <Text style={{ fontSize: 15, fontWeight: 600, color: palette().text }}>退出登录？</Text>
+        <Text style={{ fontSize: 13, color: palette().text }}>{`确定要退出 ${user() ?? "当前账号"} 吗？`}</Text>
         <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
-          <Button label="Cancel" secondary={true} onPress={() => confirmOpen.set(false)} />
+          <Button label="取消" secondary={true} onPress={() => confirmOpen.set(false)} />
           <Button
-            label={busy() ? "Signing out…" : "Sign Out"}
+            label={busy() ? "退出中…" : "退出登录"}
             disabled={busy()}
             onPress={() => {
               confirmOpen.set(false);

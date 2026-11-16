@@ -9,7 +9,7 @@ export function XhsCard(props: { link: string }) {
   return (
     <View
       onPress={() => void openLink(props.link)}
-      accessibilityLabel="Open the Xiaohongshu note in the browser"
+      accessibilityLabel="在浏览器中打开小红书笔记"
       style={{ padding: 12, gap: 6, borderRadius: 8, borderWidth: 1, borderColor: palette().border, alignSelf: "stretch" }}
     >
       <Text style={{ fontSize: 14, fontWeight: 600, color: palette().text }}>小红书笔记</Text>

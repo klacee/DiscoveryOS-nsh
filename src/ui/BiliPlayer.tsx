@@ -49,13 +49,13 @@ export function BiliPlayer(props: { video: BiliVideoId }) {
       ) : (
         <View
           onPress={() => started.set(true)}
-          accessibilityLabel={`Play Bilibili video ${videoLabel(props.video)}`}
+          accessibilityLabel={`播放 B 站视频 ${videoLabel(props.video)}`}
           style={{ aspectRatio: ratio(), borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}
         >
           <Text style={{ fontSize: 16, color: "#fff" }}>{`▶ 播放 B 站视频 ${videoLabel(props.video)}`}</Text>
         </View>
       )}
-      <View onPress={() => loginShown.set(!loginShown())} accessibilityLabel="Bilibili sign-in">
+      <View onPress={() => loginShown.set(!loginShown())} accessibilityLabel="B 站登录">
         <Text style={{ fontSize: 12, color: palette().link }}>{biliSignedIn() ? "B 站已登录（点击查看）" : "登录 B 站（会员视频需要）"}</Text>
       </View>
       {loginShown() ? (

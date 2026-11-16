@@ -130,6 +130,7 @@ export function NewThread(props: {
         minField={300}
         maxField={600}
         collapsible={false}
+        pasteHint={true}
       />
     </View>
   );

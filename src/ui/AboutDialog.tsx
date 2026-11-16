@@ -27,25 +27,25 @@ function aboutLines(): string[] {
   try {
     info = JSON.parse(Updater.aboutInfo()) as Record<string, unknown>;
   } catch {
-    return ["Details unavailable."];
+    return ["无法获取详细信息。"];
   }
-  const source = info.runningSource === "package" ? "update package" : "embedded";
+  const source = info.runningSource === "package" ? "更新包" : "内置";
   const lines = [
-    `Version ${String(info.runningVersion ?? "?")}`,
-    `Running build ${hexBuild(info.runningBuild)} (${source})`,
-    `Embedded: ${String(info.embeddedVersion ?? "?")} · build ${hexBuild(info.embeddedBuild)}`,
+    `版本 ${String(info.runningVersion ?? "?")}`,
+    `运行构建号 ${hexBuild(info.runningBuild)}（${source}）`,
+    `内置版本：${String(info.embeddedVersion ?? "?")} · 构建号 ${hexBuild(info.embeddedBuild)}`,
   ];
   const pkg = info.package as Record<string, unknown> | null | undefined;
   if (pkg && typeof pkg === "object") {
-    lines.push(`Package: ${String(pkg.version ?? "?")} · build ${hexBuild(pkg.build)}`);
+    lines.push(`更新包版本：${String(pkg.version ?? "?")} · 构建号 ${hexBuild(pkg.build)}`);
     const sha = typeof pkg.sha256 === "string" ? pkg.sha256 : "";
-    lines.push(`SHA-256: ${sha.slice(0, 16)}…`);
-    lines.push(`Key: ${String(pkg.keyId ?? "?")}`);
+    lines.push(`SHA-256：${sha.slice(0, 16)}…`);
+    lines.push(`密钥：${String(pkg.keyId ?? "?")}`);
   } else if (info.pendingSwap === true) {
-    lines.push("Package: swapped in, waiting for the health check");
+    lines.push("更新包：已切换，等待健康检查");
   }
   const last = typeof info.lastCheck === "string" ? info.lastCheck : "";
-  lines.push(`Last check: ${last || "not yet"}`);
+  lines.push(`上次检查：${last || "尚未检查"}`);
   return lines;
 }
 
@@ -68,7 +68,7 @@ export function AboutDialog() {
       >
         <View
           ref={(n: ViewRef | null) => card.set(n)}
-          accessibilityLabel="About DiscoveryOS"
+          accessibilityLabel="关于 DiscoveryOS"
           style={{
             width: 360,
             padding: 20,
@@ -85,7 +85,7 @@ export function AboutDialog() {
           ))}
           <View
             onPress={closeAbout}
-            accessibilityLabel="Close"
+            accessibilityLabel="关闭"
             style={{
               alignSelf: "flex-end",
               marginTop: 8,
@@ -96,7 +96,7 @@ export function AboutDialog() {
               borderColor: palette().border,
             }}
           >
-            <Text style={{ fontSize: 13, color: palette().text }}>Close</Text>
+            <Text style={{ fontSize: 13, color: palette().text }}>关闭</Text>
           </View>
         </View>
       </View>

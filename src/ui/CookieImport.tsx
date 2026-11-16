@@ -54,7 +54,7 @@ export function CookieImportDialog(): JSX.Element {
     try {
       pastedText.set(await Clipboard.readText());
     } catch (e) {
-      notify("cookies", `Could not read the clipboard: ${e}`);
+      notify("cookies", `无法读取剪贴板：${e}`);
     }
   }
 
@@ -64,7 +64,7 @@ export function CookieImportDialog(): JSX.Element {
       close();
       onImported?.();
     } else {
-      notify("cookies", "No cookies found in the text. Paste JSON or a Cookie header.");
+      notify("cookies", "文本中没有找到 Cookie。请粘贴 JSON 或 Cookie 请求头。");
     }
   }
 
@@ -92,21 +92,21 @@ export function CookieImportDialog(): JSX.Element {
           backgroundColor: palette().surface,
         }}
       >
-        <Text style={{ fontSize: 15, fontWeight: 600, color: palette().text }}>Import Session Cookies</Text>
+        <Text style={{ fontSize: 15, fontWeight: 600, color: palette().text }}>导入会话 Cookie</Text>
         <Text style={{ fontSize: 12, color: palette().text }}>
-          Paste the cookies as a JSON object or as a Cookie header (a=1; b=2).
+          请粘贴 JSON 对象或 Cookie 请求头（a=1; b=2）格式的 Cookie。
         </Text>
         <Input
-          placeholder="Paste cookies here"
+          placeholder="在此粘贴 Cookie"
           multiline={true}
           value={pastedText()}
           onChange={({ value }: { value: string }) => pastedText.set(value)}
           style={{ height: 120, padding: 8, fontSize: 12, color: palette().text, backgroundColor: palette().bg }}
         />
         <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
-          <DialogButton label="Paste from Clipboard" secondary={true} onPress={() => void pasteFromClipboard()} />
-          <DialogButton label="Cancel" secondary={true} onPress={close} />
-          <DialogButton label="Import" disabled={pastedText().trim().length === 0} onPress={doImport} />
+          <DialogButton label="从剪贴板粘贴" secondary={true} onPress={() => void pasteFromClipboard()} />
+          <DialogButton label="取消" secondary={true} onPress={close} />
+          <DialogButton label="导入" disabled={pastedText().trim().length === 0} onPress={doImport} />
         </View>
       </View>
     </View>

@@ -43,23 +43,23 @@ interface Definition {
 
 // The titles and keys of every command. A view supplies only how the command behaves.
 const CATALOG: Record<CommandId, Definition> = {
-  "forum.search": { title: "Search Threads", keys: ["/", "mod+f"], order: 10 },
-  "forum.refresh": { title: "Refresh", keys: ["mod+r"], order: 20 },
-  "forum.next": { title: "Next Thread", keys: ["n"], order: 30 },
-  "forum.prev": { title: "Previous Thread", keys: ["p"], order: 40 },
-  "forum.compose": { title: "New Thread", keys: ["c"], order: 50 },
-  "forum.shortcuts": { title: "Keyboard Shortcuts", keys: ["shift+/"], hint: "?", order: 60 },
-  "thread.top": { title: "Go to Top of Replies", hint: "g g", order: 100 },
-  "thread.bottom": { title: "Go to Bottom of Replies", keys: ["shift+g"], hint: "G", order: 110 },
-  "thread.reply": { title: "Reply", keys: ["r"], order: 120 },
-  "thread.favorite": { title: "Favorite Thread", keys: ["f"], order: 130 },
-  "thread.quote": { title: "Quote Highlighted Reply", keys: ["q"], order: 140 },
-  "thread.edit": { title: "Edit Highlighted Reply", keys: ["e"], order: 145 },
-  "thread.react1": { title: "React with Quick Emoji 1", keys: ["1"], order: 141 },
-  "thread.react2": { title: "React with Quick Emoji 2", keys: ["2"], order: 142 },
-  "thread.react3": { title: "React with Quick Emoji 3", keys: ["3"], order: 143 },
-  "thread.react4": { title: "React with Quick Emoji 4", keys: ["4"], order: 144 },
-  "reply.send": { title: "Send Reply", keys: ["mod+enter"], order: 150 },
+  "forum.search": { title: "搜索帖子", keys: ["/", "mod+f"], order: 10 },
+  "forum.refresh": { title: "刷新", keys: ["mod+r"], order: 20 },
+  "forum.next": { title: "下一个帖子", keys: ["n"], order: 30 },
+  "forum.prev": { title: "上一个帖子", keys: ["p"], order: 40 },
+  "forum.compose": { title: "发新帖", keys: ["c"], order: 50 },
+  "forum.shortcuts": { title: "键盘快捷键", keys: ["shift+/"], hint: "?", order: 60 },
+  "thread.top": { title: "跳到回复顶部", hint: "g g", order: 100 },
+  "thread.bottom": { title: "跳到回复底部", keys: ["shift+g"], hint: "G", order: 110 },
+  "thread.reply": { title: "回复", keys: ["r"], order: 120 },
+  "thread.favorite": { title: "收藏帖子", keys: ["f"], order: 130 },
+  "thread.quote": { title: "引用高亮的回复", keys: ["q"], order: 140 },
+  "thread.edit": { title: "编辑高亮的回复", keys: ["e"], order: 145 },
+  "thread.react1": { title: "用快捷表情 1 回应", keys: ["1"], order: 141 },
+  "thread.react2": { title: "用快捷表情 2 回应", keys: ["2"], order: 142 },
+  "thread.react3": { title: "用快捷表情 3 回应", keys: ["3"], order: 143 },
+  "thread.react4": { title: "用快捷表情 4 回应", keys: ["4"], order: 144 },
+  "reply.send": { title: "发送回复", keys: ["mod+enter"], order: 150 },
 };
 
 /** What a view gives a command while it is shown. */
@@ -130,7 +130,7 @@ export function shortcutRows(): { key: string; action: string }[] {
     .filter((id) => live(id) !== undefined && hintOf(CATALOG[id]) !== undefined)
     .sort((a, b) => CATALOG[a].order - CATALOG[b].order)
     .map((id) => ({ key: hintOf(CATALOG[id])!, action: CATALOG[id].title }));
-  return [...rows, { key: "Esc", action: "Close this list, or the search field" }];
+  return [...rows, { key: "Esc", action: "关闭此列表或搜索框" }];
 }
 
 const SEPARATOR: MenuItem = { type: "separator" };
@@ -141,7 +141,7 @@ function role(name: MenuRole): MenuItem {
 
 // About opens the app's own dialog (build details, last check) on every platform.
 function aboutItem(): MenuItem {
-  return { label: "About DiscoveryOS", onSelect: openAbout };
+  return { label: "关于 DiscoveryOS", onSelect: openAbout };
 }
 
 function submenu(label: string, items: MenuItem[]): MenuItem {
@@ -179,9 +179,9 @@ function appearanceItem(mode: AppearanceMode): MenuItem {
 export function menuBar(): MenuItem[] {
   return [
     submenu("DiscoveryOS", [aboutItem(), SEPARATOR, role("hide"), role("hideOthers"), role("showAll"), SEPARATOR, role("quit")]),
-    submenu("Edit", [role("undo"), role("redo"), SEPARATOR, role("cut"), role("copy"), role("paste"), role("selectAll")]),
-    submenu("Forum", [item("forum.search"), item("forum.refresh"), SEPARATOR, item("forum.next"), item("forum.prev"), item("forum.compose")]),
-    submenu("Thread", [
+    submenu("编辑", [role("undo"), role("redo"), SEPARATOR, role("cut"), role("copy"), role("paste"), role("selectAll")]),
+    submenu("论坛", [item("forum.search"), item("forum.refresh"), SEPARATOR, item("forum.next"), item("forum.prev"), item("forum.compose")]),
+    submenu("帖子", [
       item("thread.top"),
       item("thread.bottom"),
       SEPARATOR,
@@ -191,9 +191,9 @@ export function menuBar(): MenuItem[] {
       item("thread.edit"),
       item("reply.send"),
     ]),
-    submenu("View", [submenu("Appearance", APPEARANCES.map(appearanceItem))]),
-    submenu("Window", [role("minimize"), role("zoom"), role("toggleFullScreen"), SEPARATOR, role("close")]),
-    submenu("Help", [aboutItem(), SEPARATOR, item("forum.shortcuts"), ...(debugEnabled ? [SEPARATOR, ...debugItems()] : [])]),
+    submenu("视图", [submenu("外观", APPEARANCES.map(appearanceItem))]),
+    submenu("窗口", [role("minimize"), role("zoom"), role("toggleFullScreen"), SEPARATOR, role("close")]),
+    submenu("帮助", [aboutItem(), SEPARATOR, item("forum.shortcuts"), ...(debugEnabled ? [SEPARATOR, ...debugItems()] : [])]),
   ];
 }
 
@@ -201,8 +201,8 @@ export function menuBar(): MenuItem[] {
 // The text is a live session credential: it is never logged or shown.
 function debugItems(): MenuItem[] {
   return [
-    { label: "Copy Session Cookies", onSelect: copySessionCookies },
-    { label: "Import Session Cookies", onSelect: openCookieImport },
+    { label: "复制会话 Cookie", onSelect: copySessionCookies },
+    { label: "导入会话 Cookie", onSelect: openCookieImport },
   ];
 }
 

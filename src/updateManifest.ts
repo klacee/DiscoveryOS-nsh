@@ -38,6 +38,6 @@ export function parseManifest(value: unknown): Manifest | null {
 
 /** The update button's tooltip: the build first (what the user needs to tell releases apart), then the notes. */
 export function updateTitle(manifest: Manifest): string {
-  const head = `Update to ${manifest.version} (build ${manifest.build})`;
+  const head = `更新到 ${manifest.version}（构建号 ${manifest.build}）`;
   return manifest.notes ? `${head}\n${manifest.notes}` : head;
 }

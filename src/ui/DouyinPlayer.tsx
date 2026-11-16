@@ -40,7 +40,7 @@ export function DouyinPlayer(props: { id: string }) {
       ) : (
         <View
           onPress={() => started.set(true)}
-          accessibilityLabel={`Open Douyin video ${props.id}`}
+          accessibilityLabel={`打开抖音视频 ${props.id}`}
           style={{ height: PLAYER_HEIGHT, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}
         >
           <Text style={{ fontSize: 16, color: "#fff" }}>{`▶ 打开抖音视频 ${props.id}`}</Text>

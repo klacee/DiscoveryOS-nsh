@@ -72,7 +72,7 @@ export function ReplyCard(props: {
               {props.reactions().map((emoji) => (
                 <View
                   onPress={() => props.onReactionPress?.(emoji)}
-                  accessibilityLabel="Remove this reaction"
+                  accessibilityLabel="取消此回应"
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
@@ -100,7 +100,7 @@ export function ReplyCard(props: {
           {props.comments().map((c) => (
             <View
               onPress={() => props.onCommentPress?.(c.id)}
-              accessibilityLabel="Go to this reply"
+              accessibilityLabel="跳到这条回复"
               style={{
                 gap: 4,
                 padding: 10,

@@ -69,6 +69,8 @@ export function ReplyBox(props: {
   onCancel?: () => void;
   /** Whether the Cancel button shows now, when it is given (it shows by default). */
   cancelShown?: () => boolean;
+  /** A hint that the user can paste pictures to upload, shown beside the field while the box is open and no upload is in progress or done. */
+  pasteHint?: boolean;
 }) {
   const sendable = () => (props.canSend ? props.canSend() : props.draft().length > 0) && !props.sending() && !props.uploading?.();
   useCommand("reply.send", { enabled: sendable, run: () => props.onSend() });
@@ -163,7 +165,7 @@ export function ReplyBox(props: {
             field = n as unknown as { focus(): void; blur(): void };
             if (n) props.fieldRef?.(field);
           }}
-          placeholder={props.placeholder ?? "Reply"}
+          placeholder={props.placeholder ?? "回复"}
           multiline={true}
           value={props.draft()}
           onChange={({ value: text }: { value: string }) => takeBack(text)}
@@ -193,25 +195,34 @@ export function ReplyBox(props: {
         {props.uploading?.() ? (
           // The labels share the send button's 26 pt box (its icon and padding), so they centre on the plane.
           <View style={{ height: 26, flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Text style={{ fontSize: 12, color: palette().muted }}>Uploading…</Text>
+            <Text style={{ fontSize: 12, color: palette().muted }}>上传中…</Text>
             <RefreshIcon size={12} spinning={true} />
           </View>
         ) : null}
         {pictures().length > 0 && !props.uploading?.() ? (
           <View style={{ height: 26, justifyContent: "center" }}>
             <Text style={{ fontSize: 12, color: palette().muted }}>
-              {`Uploaded ${pictures().length} ${pictures().length === 1 ? "file" : "files"}`}
+              {`已上传 ${pictures().length} 个文件`}
             </Text>
           </View>
         ) : null}
+        {props.pasteHint && !collapsed() && !props.uploading?.() && pictures().length === 0 ? (
+          <View style={{ height: 26, justifyContent: "center" }}>
+            <Text style={{ fontSize: 12, color: palette().muted }}>可直接粘贴图片上传</Text>
+          </View>
+        ) : null}
         {props.onCancel && (props.cancelShown?.() ?? true) ? (
-          <View onPress={props.onCancel} accessibilityLabel="Cancel" style={{ height: 26, justifyContent: "center", paddingHorizontal: 6 }}>
-            <Text style={{ fontSize: 13, color: palette().muted }}>取消</Text>
+          <View
+            onPress={props.onCancel}
+            accessibilityLabel="取消"
+            style={{ height: 26, justifyContent: "center", paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: palette().border }}
+          >
+            <Text style={{ fontSize: 13, color: palette().text }}>取消</Text>
           </View>
         ) : null}
         <View
           onPress={sendable() ? props.onSend : undefined}
-          accessibilityLabel="Send"
+          accessibilityLabel="发送"
           tooltip={hint("发送 (⌘Enter)")}
           style={{ padding: 4, paddingRight: 7 }}
         >

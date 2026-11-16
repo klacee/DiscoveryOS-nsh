@@ -69,7 +69,7 @@ export function ThreadRow(props: {
       {props.item().replies === undefined ? null : (
         <View style={{ width: 44, alignItems: "flex-end", gap: 1 }}>
           <Text style={{ fontSize: 13, color: palette().text }}>{String(props.item().replies)}</Text>
-          <Text style={{ fontSize: 10, color: palette().muted }}>replies</Text>
+          <Text style={{ fontSize: 10, color: palette().muted }}>回复</Text>
         </View>
       )}
     </View>

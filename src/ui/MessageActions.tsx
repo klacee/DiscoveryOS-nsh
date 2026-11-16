@@ -80,7 +80,7 @@ export function MessageActions(props: {
         {EMOJI_REACTIONS_ON ? props.quick().map((emoji, i) => (
           <View
             onPress={() => reactFromBar(emoji)}
-            accessibilityLabel={`React ${emoji}`}
+            accessibilityLabel={`回应 ${emoji}`}
             tooltip={hint(`${emoji} (${i + 1})`)}
             {...CELL_FEEDBACK}
             style={{ ...CELL, ...(props.mine().includes(emoji) ? ON_STYLE : {}) }}
@@ -91,7 +91,7 @@ export function MessageActions(props: {
         {EMOJI_REACTIONS_ON ? (
         <View
           onPress={() => open(!picking())}
-          accessibilityLabel="More emoji"
+          accessibilityLabel="更多表情"
           tooltip={hint("更多表情")}
           {...CELL_FEEDBACK}
           style={CELL}
@@ -100,17 +100,17 @@ export function MessageActions(props: {
         </View>
         ) : null}
         {props.onQuote ? (
-          <View onPress={props.onQuote} accessibilityLabel="Quote" tooltip={hint("引用 (q)")} {...CELL_FEEDBACK} style={CELL}>
+          <View onPress={props.onQuote} accessibilityLabel="引用"tooltip={hint("引用 (q)")} {...CELL_FEEDBACK} style={CELL}>
             <QuoteIcon size={16} />
           </View>
         ) : null}
         {props.onEdit ? (
-          <View onPress={props.onEdit} accessibilityLabel="Edit" tooltip={hint("编辑 (e)")} {...CELL_FEEDBACK} style={CELL}>
+          <View onPress={props.onEdit} accessibilityLabel="编辑"tooltip={hint("编辑 (e)")} {...CELL_FEEDBACK} style={CELL}>
             <PencilIcon size={16} />
           </View>
         ) : null}
         {props.onDelete ? (
-          <View onPress={props.onDelete} accessibilityLabel="Delete" tooltip={hint("删除")} {...CELL_FEEDBACK} style={CELL}>
+          <View onPress={props.onDelete} accessibilityLabel="删除"tooltip={hint("删除")} {...CELL_FEEDBACK} style={CELL}>
             <TrashIcon size={16} />
           </View>
         ) : null}
@@ -135,7 +135,7 @@ export function MessageActions(props: {
             {EMOJI_CHOICES.map((emoji) => (
               <View
                 onPress={() => reactFromGrid(emoji)}
-                accessibilityLabel={`React ${emoji}`}
+                accessibilityLabel={`回应 ${emoji}`}
                 {...CELL_FEEDBACK}
                 style={{ ...CELL, ...(props.mine().includes(emoji) ? ON_STYLE : {}) }}
               >

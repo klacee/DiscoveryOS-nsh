@@ -349,7 +349,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
       .catch((e) => {
         if (request !== listRequest) return;
         if (n === 1) {
-          notify("list", "Couldn't load threads. Tap to retry.", () => {
+          notify("list", "无法加载帖子，点击重试。", () => {
             listLoading.set(true);
             fetchList(load, 1, key);
           });
@@ -357,8 +357,8 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
         }
         moreFailures++;
         if (moreFailures >= MORE_FAILURES) {
-          moreError.set({ message: "Couldn't load more threads.", retry: () => loadMore() });
-          notify("more", "Couldn't load more threads. Tap to retry.", () => {
+          moreError.set({ message: "无法加载更多帖子。", retry: () => loadMore() });
+          notify("more", "无法加载更多帖子，点击重试。", () => {
             moreError.set(null);
             moreFailures = 0;
             loadMore();
@@ -689,7 +689,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
 
   // The threads column's title: the search it shows, else the channel or list open.
   const headerTitle = () =>
-    searchTerm() !== null ? `包含 “${searchTerm()}” 的帖子` : favorites() ? "Favorites" : mine() ? "My Posts" : replies() ? "My Replies" : messages() ? "Messages" : history() ? "History" : channel() ? channel()!.title : "Threads";
+    searchTerm() !== null ? `包含 “${searchTerm()}” 的帖子` : favorites() ? "收藏" : mine() ? "我的帖子" : replies() ? "我的回复" : messages() ? "消息" : history() ? "历史" : channel() ? channel()!.title : "帖子";
 
   // Nothing is open yet (no channel, list or search), so the column has nothing to list.
   const nothingPicked = () =>
@@ -724,7 +724,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
           props.onSignInNeeded?.();
           return;
         }
-        notify("channels", "Couldn't load channels. Tap to retry.", () => reloadChannels());
+        notify("channels", "无法加载版块，点击重试。", () => reloadChannels());
       })
       .finally(() => {
         if (request === channelsRequest) channelsLoading.set(false);
@@ -862,12 +862,12 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
             justifyContent: railed() ? "center" : "space-between",
           }}
         >
-          {railed() ? null : <Text style={{ fontSize: 12, fontWeight: 600, color: palette().muted }}>Channels</Text>}
+          {railed() ? null : <Text style={{ fontSize: 12, fontWeight: 600, color: palette().muted }}>版块</Text>}
           <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
             {railed() ? null : (
               <View
                 onPress={channelsLoading() ? undefined : () => reloadChannels()}
-                accessibilityLabel="Refresh channels"
+                accessibilityLabel="刷新版块"
                 tooltip={hint("刷新版块")}
                 style={{ padding: 4, borderRadius: 6 }}
               >
@@ -877,7 +877,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
             {wide() && !titleBarShown() ? (
               <View
                 onPress={toggleChannelsCollapsed}
-                accessibilityLabel={channelsCollapsed() ? "Expand channels" : "Collapse channels"}
+                accessibilityLabel={channelsCollapsed() ? "展开版块" : "收起版块"}
                 tooltip={hint(channelsCollapsed() ? "展开版块" : "收起版块")}
                 style={{ padding: 4, borderRadius: 6 }}
               >
@@ -899,7 +899,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
               ) : (
                 <View
                   onPress={toggleMore}
-                  accessibilityLabel="More channels"
+                  accessibilityLabel="更多版块"
                   style={{ paddingVertical: 4, paddingHorizontal: railed() ? 4 : 8, borderRadius: 6 }}
                 >
                   <View onLayout={({ bounds }) => stackWidth.set(bounds.size.width)} style={{ height: 30, overflow: "hidden" }}>
@@ -915,7 +915,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
               <View style={{ height: 1, marginVertical: 4, backgroundColor: palette().border }} />
               <View
                 onPress={showFavorites}
-                accessibilityLabel="Favorites"
+                accessibilityLabel="收藏"
                 style={{
                   padding: 8,
                   borderRadius: 6,
@@ -927,13 +927,13 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
                 ) : (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Text style={{ fontSize: 18, width: 22, textAlign: "center" }}>⭐</Text>
-                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>Favorites</Text>
+                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>收藏</Text>
                   </View>
                 )}
               </View>
               <View
                 onPress={showMine}
-                accessibilityLabel="My Posts"
+                accessibilityLabel="我的帖子"
                 style={{
                   padding: 8,
                   borderRadius: 6,
@@ -945,13 +945,13 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
                 ) : (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Text style={{ fontSize: 18, width: 22, textAlign: "center" }}>📝</Text>
-                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>My Posts</Text>
+                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>我的帖子</Text>
                   </View>
                 )}
               </View>
               <View
                 onPress={showReplies}
-                accessibilityLabel="My Replies"
+                accessibilityLabel="我的回复"
                 style={{
                   padding: 8,
                   borderRadius: 6,
@@ -963,13 +963,13 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
                 ) : (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Text style={{ fontSize: 18, width: 22, textAlign: "center" }}>💬</Text>
-                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>My Replies</Text>
+                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>我的回复</Text>
                   </View>
                 )}
               </View>
               <View
                 onPress={showMessages}
-                accessibilityLabel="Messages"
+                accessibilityLabel="消息"
                 style={{
                   padding: 8,
                   borderRadius: 6,
@@ -981,13 +981,13 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
                 ) : (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Text style={{ fontSize: 18, width: 22, textAlign: "center" }}>✉️</Text>
-                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>Messages</Text>
+                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>消息</Text>
                   </View>
                 )}
               </View>
               <View
                 onPress={showHistory}
-                accessibilityLabel="History"
+                accessibilityLabel="历史"
                 style={{
                   padding: 8,
                   borderRadius: 6,
@@ -999,7 +999,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
                 ) : (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Text style={{ fontSize: 18, width: 22, textAlign: "center" }}>🕘</Text>
-                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>History</Text>
+                    <Text style={{ fontSize: 13, color: palette().text, flex: 1 }}>历史</Text>
                   </View>
                 )}
               </View>
@@ -1017,13 +1017,13 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
           )}
           {titleBarShown() ? null : <SearchControl {...searchProps} />}
           {canCompose() ? (
-            <View onPress={openComposer} accessibilityLabel="New thread" tooltip={hint("写新帖子 (c)")} style={{ padding: 4, borderRadius: 6 }}>
+            <View onPress={openComposer} accessibilityLabel="发新帖" tooltip={hint("写新帖子 (c)")} style={{ padding: 4, borderRadius: 6 }}>
               <PencilIcon size={16} />
             </View>
           ) : null}
           <View
             onPress={refreshing() || (!favorites() && !mine() && !replies() && !messages() && !history() && !channel()) ? undefined : refreshThreads}
-            accessibilityLabel="Refresh threads"
+            accessibilityLabel="刷新帖子"
             tooltip={hint("刷新帖子")}
             style={{ padding: 4, borderRadius: 6 }}
           >
@@ -1034,7 +1034,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
           <Text style={{ fontSize: 13, color: palette().muted, textAlign: "center", padding: 16 }}>No threads match “{searchTerm()}”.</Text>
         ) : null}
         {history() && searchTerm() === null && historyRows().length === 0 ? (
-          <Text style={{ fontSize: 13, color: palette().muted, textAlign: "center", padding: 16 }}>Threads you open will appear here.</Text>
+          <Text style={{ fontSize: 13, color: palette().muted, textAlign: "center", padding: 16 }}>你打开的帖子会出现在这里。</Text>
         ) : null}
         {listLoading() ? (
           <Scroll style={{ flex: 1 }}>
@@ -1042,8 +1042,8 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
           </Scroll>
         ) : nothingPicked() ? (
           <Placeholder
-            title="Choose a channel to see its threads."
-            detail={props.user() ? undefined : "Sign in to see your favorites, posts, replies and messages."}
+            title="选择一个版块以查看其中的帖子。"
+            detail={props.user() ? undefined : "登录后可查看收藏、帖子、回复和消息。"}
           />
         ) : (
         // A virtualized list: only the rows near the viewport exist, and they are reused as
@@ -1058,7 +1058,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
             <View>
               {loadingMoreShown() ? <LoadingBar /> : null}
               {!more() && posts().length > 0 && !loadingMoreShown() ? (
-                <Text style={{ fontSize: 13, color: palette().muted, textAlign: "center", padding: 16 }}>No more threads.</Text>
+                <Text style={{ fontSize: 13, color: palette().muted, textAlign: "center", padding: 16 }}>没有更多帖子了。</Text>
               ) : null}
             </View>
           )}
@@ -1109,7 +1109,7 @@ export function Forum(props: { footer?: (compact: boolean) => JSX.Element; user:
           />
         ) : (
           <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-            <Text style={{ fontSize: 13, color: palette().muted }}>Select a thread</Text>
+            <Text style={{ fontSize: 13, color: palette().muted }}>请选择一个帖子</Text>
           </View>
         )}
       </View>

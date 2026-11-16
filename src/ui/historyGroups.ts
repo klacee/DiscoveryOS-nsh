@@ -27,13 +27,13 @@ export function browseSection(viewed: number, now: Date): string {
   const d = now.getDate();
   // Monday is the first day of the week, so Monday's offset from today is zero.
   const sinceMonday = (now.getDay() + 6) % 7;
-  if (viewed >= at(y, m, d)) return "Today";
-  if (viewed >= at(y, m, d - 1)) return "Yesterday";
-  if (viewed >= at(y, m, d - sinceMonday)) return "This week";
-  if (viewed >= at(y, m, d - sinceMonday - 7)) return "Last week";
-  if (viewed >= at(y, m, 1)) return "This month";
-  if (viewed >= at(y, m - 1, 1)) return "Last month";
-  return new Date(viewed).toLocaleString("en-US", { month: "long", year: "numeric" });
+  if (viewed >= at(y, m, d)) return "今天";
+  if (viewed >= at(y, m, d - 1)) return "昨天";
+  if (viewed >= at(y, m, d - sinceMonday)) return "本周";
+  if (viewed >= at(y, m, d - sinceMonday - 7)) return "上周";
+  if (viewed >= at(y, m, 1)) return "本月";
+  if (viewed >= at(y, m - 1, 1)) return "上月";
+  const when = new Date(viewed); return `${when.getFullYear()}年${when.getMonth() + 1}月`;
 }
 
 /** The history in sections, in the order the entries are given: a section starts where the

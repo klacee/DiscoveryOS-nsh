@@ -15,7 +15,7 @@ import { timeAgo } from "../discuz/timeAgo";
 import { LoadingBar } from "./LoadingBar";
 import { notify } from "./toast";
 import { palette } from "./appearance";
-import { titleBarShown } from "./TitleBar";
+import { captionInset, titleBarShown } from "./TitleBar";
 import { BrowserIcon, LinkIcon, StarIcon } from "./icons";
 import { MessageActions } from "./MessageActions";
 import { EMOJI_REACTIONS_ON, pickerOpenOn, quickEmojis, reactionsOn, toggleReaction } from "./reactions";
@@ -128,12 +128,12 @@ export function Thread(props: {
     sending.set(true);
     try {
       await postReply(fid(), props.post.id, body);
-      notify("reply", "Reply posted.");
+      notify("reply", "回复已发布。");
       attachments.set([]);
       await setDraft("");
     } catch (e) {
       // The forum's own refusal (e.g. the 30-second limit) is shown as it words it.
-      notify("reply-error", e instanceof ReplyRefused ? e.message : "Couldn't send your reply. Try again.");
+      notify("reply-error", e instanceof ReplyRefused ? e.message : "回复发送失败，请重试。");
     } finally {
       sending.set(false);
     }
@@ -153,8 +153,8 @@ export function Thread(props: {
       const current = editing();
       return current ? uploadEditAttachment(current.form, file, kind) : uploadAttachment(fid(), props.post.id, file, kind);
     },
-    (name) => `Couldn't upload ${name}. Try again.`,
-    "Can't attach that file. Try dragging it into the box.",
+    (name) => `无法上传 ${name}，请重试。`,
+    "无法添加该文件，请尝试把它拖入输入框。",
   );
 
   // Each reply's text view, by floor: `q` asks the highlighted one for its selected text.
@@ -202,7 +202,7 @@ export function Thread(props: {
         page.set(found.page);
         more.set(found.replies.length > 0);
       } catch (e) {
-        notify("floor-error", "Couldn't open that post.");
+        notify("floor-error", "无法打开该帖子。");
         return;
       }
     }
@@ -237,7 +237,7 @@ export function Thread(props: {
       editing.set({ pid: r.id, seq: r.seq, form, text: postToDraft(form.message) });
       replyField?.focus();
     } catch (e) {
-      notify("edit-error", e instanceof ReplyRefused ? e.message : "Couldn't open this reply for editing. Try again.");
+      notify("edit-error", e instanceof ReplyRefused ? e.message : "无法打开这条回复进行编辑，请重试。");
     }
   }
 
@@ -259,9 +259,9 @@ export function Thread(props: {
     try {
       const form = await loadEditForm(fid(), props.post.id, target.pid, 1);
       await deletePost(fid(), props.post.id, target.pid, 1, form);
-      notify("delete", "Reply deleted.");
+      notify("delete", "回复已删除。");
     } catch (e) {
-      notify("delete-error", e instanceof ReplyRefused ? e.message : "Couldn't delete this reply. Try again.");
+      notify("delete-error", e instanceof ReplyRefused ? e.message : "无法删除这条回复，请重试。");
     } finally {
       sending.set(false);
     }
@@ -285,11 +285,11 @@ export function Thread(props: {
     sending.set(true);
     try {
       await editPost(fid(), props.post.id, current.pid, 1, current.form, body);
-      notify("edit", "Reply edited.");
+      notify("edit", "回复已修改。");
       endEdit();
     } catch (e) {
       // The forum's own refusal is shown as it words it; the box keeps the text for another try.
-      notify("edit-error", e instanceof ReplyRefused ? e.message : "Couldn't save your edit. Try again.");
+      notify("edit-error", e instanceof ReplyRefused ? e.message : "无法保存修改，请重试。");
     } finally {
       sending.set(false);
     }
@@ -307,17 +307,17 @@ export function Thread(props: {
       if (saved()) {
         if (await removeBookmark(props.post.id)) {
           markFavorite(props.post.id, false);
-          notify("favorite", "Removed from favorites.");
+          notify("favorite", "已取消收藏。");
           props.onUnfavorited?.();
         } else {
-          notify("favorite-error", "Couldn't remove from favorites. Try again.");
+          notify("favorite-error", "无法取消收藏，请重试。");
         }
       } else if (await bookmarkPost(props.post.id)) {
         markFavorite(props.post.id, true, props.post.lastReplyAt ?? props.post.at);
-        notify("favorite", "Added to favorites.");
+        notify("favorite", "已收藏。");
       }
     } catch (e) {
-      notify("favorite-error", "Couldn't update favorites. Try again.");
+      notify("favorite-error", "无法更新收藏，请重试。");
     }
   }
 
@@ -429,12 +429,20 @@ export function Thread(props: {
           on the bar's 44pt; it drags the window where nothing presses. With no bar, it keeps the top inset. */}
       <View
         desktop={{ windowDrag: true }}
-        style={{ flexDirection: "row", alignItems: "center", gap: 12, padding: 12, paddingTop: titleBarShown() ? 18 : 20 }}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 12,
+          padding: 12,
+          paddingTop: titleBarShown() ? 18 : 20,
+          // The window's own buttons sit at the top right of the bar: the title keeps clear of them.
+          paddingRight: 12 + captionInset(),
+        }}
       >
         {/* Back sits in the row, first, so the icons after it move right with it. */}
         {props.onBack ? (
-          <View onPress={props.onBack} accessibilityLabel="Back" style={{ paddingVertical: 4, paddingHorizontal: 6 }}>
-            <Text style={{ fontSize: 13, color: palette().muted }}>{"‹ Back"}</Text>
+          <View onPress={props.onBack} accessibilityLabel="返回" style={{ paddingVertical: 4, paddingHorizontal: 6 }}>
+            <Text style={{ fontSize: 13, color: palette().muted }}>{"‹ 返回"}</Text>
           </View>
         ) : null}
         {/* The icons sit at the left, bottom-aligned with the title: the favorite star, and the thread's
@@ -443,7 +451,7 @@ export function Thread(props: {
           {props.signedIn ? (
             <View
               onPress={toggleFavorite}
-              accessibilityLabel={saved() ? "Remove from favorites" : "Add to favorites"}
+              accessibilityLabel={saved() ? "取消收藏" : "收藏"}
               tooltip={hint(saved() ? "取消收藏 (f)" : "收藏 (f)")}
             >
               {saved() ? <StarIcon size={16} filled={true} /> : <StarIcon size={16} />}
@@ -451,7 +459,7 @@ export function Thread(props: {
           ) : null}
           <View
             onPress={() => void openLink(threadUrl())}
-            accessibilityLabel="Open the thread in the browser"
+            accessibilityLabel="在浏览器中打开帖子"
             tooltip={hint("在浏览器中打开")}
             style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
           >
@@ -460,9 +468,9 @@ export function Thread(props: {
           <View
             onPress={() => {
               Clipboard.writeText(threadUrl());
-              notify("copy-link", "Link copied.");
+              notify("copy-link", "链接已复制。");
             }}
-            accessibilityLabel="Copy the post link"
+            accessibilityLabel="复制帖子链接"
             tooltip={hint("复制帖子链接")}
           >
             <LinkIcon size={16} />
@@ -486,13 +494,13 @@ export function Thread(props: {
       </View>
       {failedPage() !== null ? (
         <View style={{ alignItems: "center", padding: 16, gap: 8 }}>
-          <Text style={{ fontSize: 13, color: palette().muted }}>Couldn't load replies.</Text>
+          <Text style={{ fontSize: 13, color: palette().muted }}>无法加载回复。</Text>
           <View
             onPress={() => fetchPage(failedPage()!)}
-            accessibilityLabel="Refresh"
+            accessibilityLabel="刷新"
             style={{ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6, borderWidth: 1, borderColor: palette().border }}
           >
-            <Text style={{ fontSize: 13, color: palette().text }}>Refresh</Text>
+            <Text style={{ fontSize: 13, color: palette().text }}>刷新</Text>
           </View>
         </View>
       ) : null}
@@ -619,6 +627,7 @@ export function Thread(props: {
             onPaste={onPaste}
             onCancel={cancelEdit}
             cancelShown={() => editing() !== null}
+            pasteHint={true}
             fieldRef={(field) => {
               replyField = field;
             }}
@@ -640,14 +649,14 @@ export function Thread(props: {
             <View style={{ flexDirection: "row", justifyContent: "flex-end", gap: 8 }}>
               <View
                 onPress={() => pendingDelete.set(null)}
-                accessibilityLabel="Cancel"
+                accessibilityLabel="取消"
                 style={{ paddingVertical: 6, paddingHorizontal: 14, borderRadius: 6, borderWidth: 1, borderColor: palette().border }}
               >
                 <Text style={{ fontSize: 13, color: palette().text }}>取消</Text>
               </View>
               <View
                 onPress={() => void removeReply()}
-                accessibilityLabel="Delete"
+                accessibilityLabel="删除"
                 style={{ paddingVertical: 6, paddingHorizontal: 14, borderRadius: 6, backgroundColor: palette().danger }}
               >
                 <Text style={{ fontSize: 13, fontWeight: 600, color: "#ffffff" }}>删除</Text>

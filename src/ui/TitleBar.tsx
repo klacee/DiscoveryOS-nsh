@@ -37,6 +37,19 @@ export function titleBarShown(): boolean {
   return isAvailable && titleBar().height > 0;
 }
 
+/** The width the system's window controls take at the top right, which the app's own bar must leave clear:
+ * the platform's report (`titleBar().right`), or the usual width of Windows' and Linux's three buttons when
+ * it reports none. Zero where the controls are at the left (macOS) or the app draws no bar. */
+export function captionInset(): number {
+  if (!titleBarShown()) return 0;
+  const reported = titleBar().right;
+  if (reported > 0) return reported;
+  return platform.os === "windows" || platform.os === "linux" ? CAPTION_BUTTONS_WIDTH : 0;
+}
+
+/** Three window buttons at their usual width on Windows and Linux, in points. */
+const CAPTION_BUTTONS_WIDTH = 138;
+
 /** What the search control shows and does: the field when open, else its icon (signed in only). */
 export type SearchProps = {
   open: () => boolean;
@@ -107,7 +120,7 @@ export function SearchControl(props: SearchProps) {
       {props.signedIn() ? (
         <View
           onPress={props.open() ? undefined : openAndFocus}
-          accessibilityLabel="Search threads"
+          accessibilityLabel="搜索帖子"
           tooltip={hint("搜索帖子 (/)")}
           style={
             props.open()
@@ -151,15 +164,15 @@ export function SearchControl(props: SearchProps) {
               focused.set(false);
               if (props.open()) props.onHide();
             }}
-            placeholder="Search threads"
+            placeholder="搜索帖子"
             value={props.draft()}
             onChange={({ value: text }: { value: string }) => props.onDraft(text)}
             onSubmit={({ text }: { text: string }) => props.onSubmit(text)}
             returnKeyType="search"
-            accessibilityLabel="Search threads"
+            accessibilityLabel="搜索帖子"
             style={{ flex: 1, height: 26, fontSize: 13, borderWidth: 0, color: palette().text, backgroundColor: "transparent" }}
           />
-          <Glyph label="✕" title="Close search" onPress={props.onClose} size={13} />
+          <Glyph label="✕" title="关闭搜索" onPress={props.onClose} size={13} />
         </View>
       ) : null}
       {/* A press anywhere outside the field hides it. Presses still reach what is under them. */}
@@ -183,7 +196,7 @@ export function TitleBar(props: { wide: () => boolean; search: SearchProps }) {
         alignItems: "center",
         gap: 8,
         paddingLeft: titleBar().left + 14,
-        paddingRight: titleBar().right + 14,
+        paddingRight: captionInset() + 14,
       }}
     >
       {/* Windows and Linux hide the window's menu bar while the title bar is drawn by the app, so the app's menus open from here. */}
@@ -202,7 +215,7 @@ export function TitleBar(props: { wide: () => boolean; search: SearchProps }) {
       {props.wide() ? (
         <View
           onPress={toggleChannelsCollapsed}
-          accessibilityLabel={channelsCollapsed() ? "Expand channels" : "Collapse channels"}
+          accessibilityLabel={channelsCollapsed() ? "展开版块" : "收起版块"}
           tooltip={hint(channelsCollapsed() ? "展开版块" : "收起版块")}
           style={{ padding: 4, borderRadius: 6 }}
         >

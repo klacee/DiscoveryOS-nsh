@@ -31,7 +31,7 @@ export function Conversation(props: { peer: () => Post; onOpenThread?: (tid: str
         if (token === latest) messages.set(list);
       })
       .catch((e) => {
-        if (token === latest) notify("pm-load", "Couldn't load messages. Tap to retry.", () => load(uid));
+        if (token === latest) notify("pm-load", "无法加载消息，点击重试。", () => load(uid));
       });
     // The draft saved for this correspondent comes back with the conversation.
     Storage.getItem(draftKey(uid))
@@ -57,7 +57,7 @@ export function Conversation(props: { peer: () => Post; onOpenThread?: (tid: str
       if (uid === props.peer().id) messages.set(fresh);
       await setDraft("");
     } catch (e) {
-      notify("pm-send", `Couldn't send your message. ${e instanceof Error ? e.message : ""}`.trim());
+      notify("pm-send", `消息发送失败。${e instanceof Error ? e.message : ""}`.trim());
     } finally {
       sending.set(false);
     }
@@ -76,11 +76,11 @@ export function Conversation(props: { peer: () => Post; onOpenThread?: (tid: str
       </View>
       {messages() === null ? (
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-          <Text style={{ fontSize: 13, color: palette().muted }}>Loading…</Text>
+          <Text style={{ fontSize: 13, color: palette().muted }}>加载中…</Text>
         </View>
       ) : null}
       {messages() !== null && messages()!.length === 0 ? (
-        <Text style={{ fontSize: 13, color: palette().muted, textAlign: "center", padding: 16 }}>No messages.</Text>
+        <Text style={{ fontSize: 13, color: palette().muted, textAlign: "center", padding: 16 }}>暂无消息。</Text>
       ) : null}
       {messages() !== null && messages()!.length > 0 ? (
         <List

@@ -36,7 +36,7 @@ export function BiliLogin(props: { onSignedIn: () => void }) {
       />
       <View
         onPress={() => page.injectJavaScript(CHECK_LOGIN_JS)}
-        accessibilityLabel="Check Bilibili sign-in"
+        accessibilityLabel="检查 B 站登录状态"
         style={{ paddingVertical: 8, borderRadius: 8, alignItems: "center", backgroundColor: palette().selected }}
       >
         <Text style={{ fontSize: 13, color: palette().text }}>检查登录状态</Text>

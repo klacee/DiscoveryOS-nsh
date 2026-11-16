@@ -43,7 +43,7 @@ export async function fetchAttachment(url: string, name: string): Promise<Uint8A
   if (!response.ok) throw new AttachmentError(`HTTP ${response.status}`);
   const type = response.headers.get("content-type") ?? "";
   const isPage = /text\/html/i.test(type) && !/\.html?$/i.test(name);
-  if (isPage) throw new AttachmentError("the forum sent a page, not the file");
-  if (bytes.length > MAX_DOWNLOAD_BYTES) throw new AttachmentError("the file is larger than 8 MB");
+  if (isPage) throw new AttachmentError("论坛返回的是网页，而不是文件");
+  if (bytes.length > MAX_DOWNLOAD_BYTES) throw new AttachmentError("文件超过 8 MB");
   return bytes;
 }

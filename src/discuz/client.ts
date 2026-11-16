@@ -250,7 +250,7 @@ async function unusedImages(posttime: string): Promise<string[]> {
  * entry in the reply box's list. The reply then names it in `[attachimg]`.
  */
 export async function uploadAttachment(fid: string, tid: string | undefined, file: File, kind: "image" | "file"): Promise<string> {
-  if (!formHash) throw new Error("Not signed in");
+  if (!formHash) throw new Error("尚未登录");
   const box = await replyBox(fid, tid);
   postTimes.set(tid ?? newThreadKey(fid), box.posttime);
   return uploadToBox(box, file, kind);
@@ -261,7 +261,7 @@ export async function uploadAttachment(fid: string, tid: string | undefined, fil
  * time is the edit form's, so the picture is linked to the post being edited (not to a new reply).
  */
 export async function uploadEditAttachment(form: EditForm, file: File, kind: "image" | "file"): Promise<string> {
-  if (!formHash) throw new Error("Not signed in");
+  if (!formHash) throw new Error("尚未登录");
   if (!form.upload) throw new Error("The edit form has no image upload");
   return uploadToBox({ ...form.upload, posttime: form.posttime }, file, kind);
 }
@@ -305,7 +305,7 @@ export const REPLY_TAIL = "[url=https://www.4d4y.com/forum/viewthread.php?tid=34
  * rejects with the page's own message when Discuz refuses it. The image
  * attachments the text inserts (`[attachimg]`) go with it. */
 export async function postReply(fid: string, tid: string, content: string): Promise<void> {
-  if (!formHash) throw new Error("Not signed in");
+  if (!formHash) throw new Error("尚未登录");
   // The Swift app sends `\n` as CRLF and escapes characters outside the
   // CJK range as numeric references, then percent-encodes the GB18030 bytes.
   // The tail follows the text on the same line, in the smallest font, as a superscript-like tag.
@@ -389,7 +389,7 @@ function firstLine(text: string): string {
  * saved when it starts with the new text's first line. Rejects with `ReplyRefused` otherwise.
  */
 export async function editPost(fid: string, tid: string, pid: string, page: number, form: EditForm, content: string): Promise<void> {
-  if (!formHash) throw new Error("Not signed in");
+  if (!formHash) throw new Error("尚未登录");
   const message = htmlEntities(content.replace(/\n/g, "\r\n"));
   const fields: [string, string][] = [
     ["formhash", formHash],
@@ -417,7 +417,7 @@ export async function editPost(fid: string, tid: string, pid: string, page: numb
   const saved = await loadEditForm(fid, tid, pid, page);
   const want = firstLine(content);
   if (!want || !saved.message.split("\n").some((line) => line.trim() === want)) {
-    throw new ReplyRefused(alertText(answer.html) ?? "The forum did not save the edit.");
+    throw new ReplyRefused(alertText(answer.html) ?? "论坛未保存此次修改。");
   }
 }
 
@@ -427,7 +427,7 @@ export async function editPost(fid: string, tid: string, pid: string, page: numb
  * that still opens it refused the delete, and its own words are shown.
  */
 export async function deletePost(fid: string, tid: string, pid: string, page: number, form: EditForm): Promise<void> {
-  if (!formHash) throw new Error("Not signed in");
+  if (!formHash) throw new Error("尚未登录");
   const fields: [string, string][] = [
     ["formhash", formHash],
     ["posttime", form.posttime],
@@ -450,7 +450,7 @@ export async function deletePost(fid: string, tid: string, pid: string, page: nu
     if (e instanceof ReplyRefused) return;
     throw e;
   }
-  throw new ReplyRefused(alertText(answer.html) ?? "The forum did not delete the reply.");
+  throw new ReplyRefused(alertText(answer.html) ?? "论坛未删除这条回复。");
 }
 
 /**
@@ -489,7 +489,7 @@ export function threadIdFromUrl(url: string): string | undefined {
  * with `ThreadUnconfirmed` when the answer shows neither.
  */
 export async function postThread(fid: string, subject: string, content: string): Promise<string | undefined> {
-  if (!formHash) throw new Error("Not signed in");
+  if (!formHash) throw new Error("尚未登录");
   if (!subject.trim()) throw new ReplyRefused("请填写标题。");
   // The form's post time is read first, as the reply box's is; the site checks it with the post.
   const formPage = await request("GET", `post.php?action=newthread&fid=${fid}`);
@@ -535,7 +535,7 @@ export async function postThread(fid: string, subject: string, content: string):
     postTimes.delete(newThreadKey(fid));
     return undefined;
   }
-  throw new ThreadUnconfirmed("The forum did not confirm the new thread.");
+  throw new ThreadUnconfirmed("论坛未确认新帖是否发布。");
 }
 
 export function currentUser(): string | null {

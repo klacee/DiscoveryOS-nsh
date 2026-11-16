@@ -33,7 +33,7 @@ export async function searchThreads(keyword: string): Promise<Post[]> {
       ["ascdesc", "desc"],
     ],
   });
-  if (html.includes("您还未登录")) throw new Error(currentUser() ? "Search needs a fresh sign-in" : "Sign in to search");
+  if (html.includes("您还未登录")) throw new Error(currentUser() ? "搜索需要重新登录" : "请先登录再搜索");
   const posts = parseSearchResults(html);
   return posts;
 }
@@ -102,7 +102,7 @@ export function loadReplyPage(tid: string, page = 1): Promise<ReplyPage> {
 async function fetchReplyPage(tid: string, page: number): Promise<ReplyPage> {
   const html = await request("GET", "viewthread.php", { query: [["tid", tid], ["page", String(page)]] });
   // Still the login page after the automatic sign-in (or with none): not a thread, so it fails.
-  if (isLoginRequired(html)) throw new Error("Sign-in required to read the thread");
+  if (isLoginRequired(html)) throw new Error("读取该帖子需要登录");
   return { ...parseThreadPageInfo(html), replies: parseReplies(html) };
 }
 
@@ -148,14 +148,14 @@ export async function loadPmConversation(uid: string): Promise<PmMessage[]> {
  */
 export async function sendPm(uid: string, lastDay: string, content: string): Promise<PmMessage[]> {
   const hash = currentFormHash();
-  if (!hash) throw new Error("Not signed in");
+  if (!hash) throw new Error("尚未登录");
   const message = htmlEntities(content.replace(/\n/g, "\r\n"));
   await request("POST", `pm.php?action=send&uid=${uid}&pmsubmit=yes&infloat=yes&inajax=1`, {
     form: [["formhash", hash], ["handlekey", "pmreply"], ["lastdaterange", lastDay], ["message", message]],
   });
   const list = await loadPmConversation(uid);
   const first = htmlEntities(content.split("\n")[0].trim()).slice(0, 12);
-  if (first && !list.some((m) => m.body.includes(first))) throw new Error("The message was not sent");
+  if (first && !list.some((m) => m.body.includes(first))) throw new Error("消息未发送成功");
   return list;
 }
 

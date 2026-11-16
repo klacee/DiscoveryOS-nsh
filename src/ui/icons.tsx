@@ -1,6 +1,6 @@
 // Thin line icons drawn with a Canvas, in the muted text color of the theme: a star
 // (outline, or filled when saved) and a speech bubble (outline).
-import { Canvas, cleanup, createMotion, effect, Image, signal, View } from "nsh";
+import { Canvas, cleanup, createMotion, effect, Image, Path2D, signal, View } from "nsh";
 import { palette } from "./appearance";
 import refreshSvg from "./refresh.svg";
 import sidebarSvg from "./sidebar.svg";
@@ -10,19 +10,75 @@ import themeSystemSvg from "./theme-system.svg";
 import themeLightSvg from "./theme-light.svg";
 import themeDarkSvg from "./theme-dark.svg";
 import downloadSvg from "./download.svg";
-import chromeSvg from "./chrome.svg";
-import linkSvg from "./link.svg";
-import quoteSvg from "./quote.svg";
 import type { AppearanceMode } from "./appearance";
 
-/** The open-in-browser icon, in `chrome.svg`: the Chrome logo (Simple Icons, CC0), in the muted theme color. */
-export function BrowserIcon(props: { size: number }) {
-  return <Image src={chromeSvg} style={{ width: props.size, height: props.size }} />;
+// Drawn in code, not from an .svg file: a hot update cannot add image files to the app (see
+// `runner/main.rs`), so icons that ship later must not depend on one.
+const LINE = 1.25;
+
+/** The drawing context a `Canvas` hands its `draw` callback. */
+type Ctx = Parameters<NonNullable<Parameters<typeof Canvas>[0]["draw"]>>[0];
+
+/** A stroked capsule (a rounded bar) from `(x1, y1)` to `(x2, y2)` with radius `r`. */
+function capsule(cx: Ctx, x1: number, y1: number, x2: number, y2: number, r: number): void {
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const side = angle + Math.PI / 2;
+  cx.beginPath();
+  cx.moveTo(x1 + r * Math.cos(side), y1 + r * Math.sin(side));
+  cx.lineTo(x2 + r * Math.cos(side), y2 + r * Math.sin(side));
+  cx.arc(x2, y2, r, side, side - Math.PI, true);
+  cx.lineTo(x1 - r * Math.cos(side), y1 - r * Math.sin(side));
+  cx.arc(x1, y1, r, side - Math.PI, side - 2 * Math.PI, true);
+  cx.closePath();
 }
 
-/** The copy-link icon, in `link.svg`: the same thin line as the refresh arrow. */
+/** The open-in-browser icon: the Chrome logo as a thin line (a ring, a hub and three spokes). */
+export function BrowserIcon(props: { size: number }) {
+  return (
+    <Canvas
+      style={{ width: props.size, height: props.size }}
+      draw={(cx, size) => {
+        const s = size.width;
+        const mid = s / 2;
+        const color = palette().muted;
+        cx.strokeStyle = color;
+        cx.fillStyle = color;
+        cx.lineWidth = LINE;
+        cx.beginPath();
+        cx.arc(mid, mid, s * 0.46, 0, Math.PI * 2);
+        cx.stroke();
+        cx.beginPath();
+        cx.arc(mid, mid, s * 0.17, 0, Math.PI * 2);
+        cx.fill();
+        for (const deg of [-90, 30, 150]) {
+          const a = (deg * Math.PI) / 180;
+          cx.beginPath();
+          cx.moveTo(mid + s * 0.17 * Math.cos(a), mid + s * 0.17 * Math.sin(a));
+          cx.lineTo(mid + s * 0.46 * Math.cos(a), mid + s * 0.46 * Math.sin(a));
+          cx.stroke();
+        }
+      }}
+    />
+  );
+}
+
+/** The copy-link icon: two linked bars drawn as thin lines, like the refresh arrow. */
 export function LinkIcon(props: { size: number }) {
-  return <Image src={linkSvg} style={{ width: props.size, height: props.size }} />;
+  return (
+    <Canvas
+      style={{ width: props.size, height: props.size }}
+      draw={(cx, size) => {
+        const s = size.width;
+        cx.strokeStyle = palette().muted;
+        cx.lineWidth = LINE;
+        cx.lineJoin = "round";
+        capsule(cx, s * 0.2, s * 0.8, s * 0.48, s * 0.52, s * 0.14);
+        cx.stroke();
+        capsule(cx, s * 0.52, s * 0.48, s * 0.8, s * 0.2, s * 0.14);
+        cx.stroke();
+      }}
+    />
+  );
 }
 
 /** The update button's icon, in `download.svg`: a blue disc with a white down arrow. */
@@ -56,8 +112,6 @@ export function PencilIcon(props: { size: number }) {
 export function SidebarIcon(props: { size: number }) {
   return <Image src={sidebarSvg} style={{ width: props.size, height: props.size }} />;
 }
-
-const LINE = 1.25;
 
 /** A five-pointed star; `filled` paints it solid, otherwise it is an outline. */
 export function StarIcon(props: { size: number; filled?: boolean }) {
@@ -231,9 +285,26 @@ export function SmileIcon(props: { size: number }) {
   );
 }
 
-/** The quote icon, in `quote.svg`: two filled quotation marks ("99"), in the muted theme color. */
+// The closing quotation marks ("99") from the Svg Repo icon `quote-close-editor.svg`, a 64-unit
+// glyph: its path, drawn filled in the muted theme color.
+const QUOTE_PATH =
+  "M36.806,51.968l0,-8.026c2.537,-0.14 4.458,-0.604 5.761,-1.391c1.304,-0.786 2.22,-2.063 2.749,-3.829c0.528,-1.766 0.793,-4.293 0.793,-7.581l-9.303,0l0,-19.147l19.081,0l0,18.203c0,7.519 -1.612,13.028 -4.836,16.525c-3.225,3.497 -7.973,5.246 -14.245,5.246Zm-28.806,0l0,-8.026c2.537,-0.14 4.457,-0.586 5.761,-1.338c1.304,-0.752 2.247,-2.029 2.828,-3.83c0.581,-1.801 0.872,-4.345 0.872,-7.633l-9.461,0l0,-19.147l19.186,0l0,18.203c0,7.519 -1.603,13.028 -4.809,16.525c-3.207,3.497 -7.999,5.246 -14.377,5.246Z";
+
+/** The quote icon: two closing quotation marks, in the muted theme color. */
 export function QuoteIcon(props: { size: number }) {
-  return <Image src={quoteSvg} style={{ width: props.size, height: props.size }} />;
+  return (
+    <Canvas
+      style={{ width: props.size, height: props.size }}
+      draw={(cx, size) => {
+        const s = size.width;
+        cx.save();
+        cx.scale(s / 64, s / 64);
+        cx.fillStyle = palette().muted;
+        cx.fill(new Path2D(QUOTE_PATH));
+        cx.restore();
+      }}
+    />
+  );
 }
 
 /** A paper plane as a thin outline; `enabled` reads true for the link blue, false for the muted one. */

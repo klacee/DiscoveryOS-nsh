@@ -25,7 +25,7 @@ export function ShortcutsHelp(props: { keys: Shortcut[]; onClose: () => void }) 
       >
         <View
           ref={(n: ViewRef | null) => card.set(n)}
-          accessibilityLabel="Keyboard shortcuts"
+          accessibilityLabel="键盘快捷键"
           style={{
             width: 340,
             padding: 20,
@@ -36,7 +36,7 @@ export function ShortcutsHelp(props: { keys: Shortcut[]; onClose: () => void }) 
             backgroundColor: palette().surface,
           }}
         >
-          <Text style={{ fontSize: 15, fontWeight: 600, color: palette().text }}>Keyboard shortcuts</Text>
+          <Text style={{ fontSize: 15, fontWeight: 600, color: palette().text }}>键盘快捷键</Text>
           {props.keys.map((s) => (
             <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
               <View

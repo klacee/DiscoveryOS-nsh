@@ -7,5 +7,5 @@ import { notify } from "./toast";
 export async function openLink(url: string): Promise<void> {
   const target = url.replace(/^http:\/\//i, "https://");
   const opened = await openUrl(target).catch(() => false);
-  if (!opened) notify("open-link", "No app opened the link.");
+  if (!opened) notify("open-link", "没有应用能打开此链接。");
 }

@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use nsh_core::prelude::*;
+use nsh_engine::LoadedPackage;
 use nsh_engine::package::{Revocations, TrustStore, VerifiedPackage};
 use sha2::{Digest, Sha256};
 
@@ -186,16 +187,18 @@ pub fn embedded_build() -> u64 {
 }
 
 /// At startup: the kept package, when it verifies and is newer than the embedded bundle. Any package that
-/// is refused is removed, so it is not tried again.
-pub fn startup_package() -> Option<(nsh_engine::Bundle, u64)> {
+/// is refused is removed, so it is not tried again. Returns its bundle, its build, and the directory its
+/// assets (images and the like) were unpacked to.
+pub fn startup_package() -> Option<(nsh_engine::Bundle, u64, PathBuf)> {
     let path = state_dir().ok()?.join(CURRENT);
     let bytes = std::fs::read(&path).ok()?;
     let trust = trust_store().ok()?;
-    match open_package_full(&trust, &bytes) {
-        Ok(verified) if verified.app.build > embedded_build() => {
-            let build = verified.app.build;
-            let bundle = bundle_of(&verified).ok()?;
-            Some((bundle, build))
+    match load_package_full(&trust, &bytes) {
+        Ok(loaded) if loaded.app.build > embedded_build() => {
+            let build = loaded.app.build;
+            let assets = loaded.assets.clone();
+            let bundle = bundle_of(loaded).ok()?;
+            Some((bundle, build, assets))
         }
         Ok(_) => None,
         Err(err) => {
@@ -206,13 +209,20 @@ pub fn startup_package() -> Option<(nsh_engine::Bundle, u64)> {
     }
 }
 
-/// The bundle and build of a verified package. Its capabilities are capped at the embedded `nsh.json`'s,
-/// so a package cannot grant itself more network access than this build declares.
-pub fn bundle_from_package(bytes: &[u8]) -> Result<(nsh_engine::Bundle, u64), String> {
+/// The bundle, build and assets directory of a verified package. Its capabilities are capped at the
+/// embedded `nsh.json`'s, so a package cannot grant itself more network access than this build declares.
+pub fn bundle_from_package(bytes: &[u8]) -> Result<(nsh_engine::Bundle, u64, PathBuf), String> {
     let trust = trust_store()?;
-    let verified = open_package_full(&trust, bytes)?;
-    let build = verified.app.build;
-    Ok((bundle_of(&verified)?, build))
+    let loaded = load_package_full(&trust, bytes)?;
+    let build = loaded.app.build;
+    let assets = loaded.assets.clone();
+    Ok((bundle_of(loaded)?, build, assets))
+}
+
+/// Verifies `bytes` like [`open_package_full`] and unpacks its assets under the updates' `packages/`
+/// directory (once per package). Without this the assets stay in memory and no image can be shown.
+fn load_package_full(trust: &TrustStore, bytes: &[u8]) -> Result<LoadedPackage, String> {
+    nsh_engine::verify_package(trust, bytes, &packages_dir()?)
 }
 
 /// Verifies `bytes` (signature, certificate, revocations, hashes, rollback, runtime). The result carries
@@ -223,8 +233,8 @@ fn open_package_full(trust: &TrustStore, bytes: &[u8]) -> Result<VerifiedPackage
         .map_err(|e| e.to_string())
 }
 
-fn bundle_of(verified: &VerifiedPackage) -> Result<nsh_engine::Bundle, String> {
-    let mut bundle = nsh_engine::Bundle::from_package(verified)?;
+fn bundle_of(loaded: LoadedPackage) -> Result<nsh_engine::Bundle, String> {
+    let mut bundle = loaded.bundle;
     let manifest: serde_json::Value =
         serde_json::from_str(EMBEDDED_NSH_JSON).map_err(|e| e.to_string())?;
     if !manifest["capabilities"].is_null() {
@@ -261,6 +271,13 @@ fn state_dir() -> Result<PathBuf, String> {
         .ok_or_else(|| "no data directory".to_string())?
         .join(nsh_engine::app_dir_name(Some(APP_ID)))
         .join("updates");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// Where verified packages unpack their assets: `<updates>/packages/`.
+fn packages_dir() -> Result<PathBuf, String> {
+    let dir = state_dir()?.join("packages");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }

@@ -49,21 +49,16 @@ fn main() -> ExitCode {
         eprintln!("DiscoveryOS must run on the main thread");
         return ExitCode::FAILURE;
     };
-    // `DiscoveryOS.app/Contents/MacOS/DiscoveryOS` -> `DiscoveryOS.app/Contents/Resources/nsh`.
-    let dir = std::env::current_exe()
-        .ok()
-        .and_then(|exe| exe.canonicalize().ok())
-        .and_then(|exe| Some(exe.parent()?.parent()?.join("Resources/nsh")))
-        .unwrap_or_default();
+    let dir = shipped_dir();
     // The package kept from an earlier update when it still verifies, else the bundle shipped in the app.
-    let bundle = match update::startup_package() {
-        Some((bundle, build)) => {
+    let (bundle, package_assets) = match update::startup_package() {
+        Some((bundle, build, assets)) => {
             update::ACTIVE_BUILD.store(build, std::sync::atomic::Ordering::SeqCst);
-            bundle
+            (bundle, Some(assets))
         }
         // SAFETY: the embedded bytecode is a resource of this app bundle, covered by its signature.
         None => match unsafe { Bundle::read_trusted(&dir.join("bundle.nshc")) } {
-            Ok(bundle) => bundle,
+            Ok(bundle) => (bundle, None),
             Err(err) => {
                 eprintln!("cannot read the app bundle in {}: {err}", dir.display());
                 return ExitCode::FAILURE;
@@ -71,7 +66,7 @@ fn main() -> ExitCode {
         },
     };
     let options = AppOptions {
-        asset_base: Some(AssetBase::Directory(dir.join("assets"))),
+        asset_base: Some(asset_base(package_assets, &dir)),
         limits: Limits::standalone(),
         title: "DiscoveryOS".into(),
         app_id: "com.nickr.DiscoveryOS".into(),
@@ -120,6 +115,26 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `DiscoveryOS.app/Contents/Resources/nsh`: the bundle and assets shipped in the app.
+fn shipped_dir() -> std::path::PathBuf {
+    // `DiscoveryOS.app/Contents/MacOS/DiscoveryOS` -> `DiscoveryOS.app/Contents/Resources/nsh`.
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.canonicalize().ok())
+        .and_then(|exe| Some(exe.parent()?.parent()?.join("Resources/nsh")))
+        .unwrap_or_default()
+}
+
+/// Where images come from: the running package's assets first (a hot update can add images the app
+/// shipped without), then the assets shipped in the app.
+fn asset_base(package: Option<std::path::PathBuf>, shipped: &std::path::Path) -> AssetBase {
+    let shipped = shipped.join("assets");
+    match package {
+        Some(package) => AssetBase::Directories(vec![package, shipped]),
+        None => AssetBase::Directory(shipped),
+    }
+}
+
 /// The menu bar: the app menu with Quit (this runner replaces the stock menu). About is the app's own
 /// dialog, opened from the TSX menu.
 fn install_menu(mtm: MainThreadMarker, app: &NSApplication) {
@@ -143,9 +158,10 @@ fn install_menu(mtm: MainThreadMarker, app: &NSApplication) {
 /// Runs on the main thread: verifies the package again, builds its bundle, and swaps the view.
 fn swap(bytes: Vec<u8>) {
     match update::bundle_from_package(&bytes) {
-        Ok((bundle, build)) => VIEW.with(|slot| {
+        Ok((bundle, build, assets)) => VIEW.with(|slot| {
             if let Some(view) = slot.borrow().as_ref() {
                 update::ACTIVE_BUILD.store(build, std::sync::atomic::Ordering::SeqCst);
+                view.set_asset_base(Some(asset_base(Some(assets), &shipped_dir())));
                 view.load(App::Js(bundle));
             }
         }),

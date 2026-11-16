@@ -59,7 +59,7 @@ export function palette(): Palette {
 const STORAGE_KEY = "appearance";
 const MODES: AppearanceMode[] = ["system", "light", "dark"];
 
-const NAMES: Record<AppearanceMode, string> = { system: "Auto", light: "Light", dark: "Dark" };
+const NAMES: Record<AppearanceMode, string> = { system: "跟随系统", light: "浅色", dark: "深色" };
 
 /** The name of a setting as the button shows it. */
 export function appearanceName(mode: AppearanceMode): string {
