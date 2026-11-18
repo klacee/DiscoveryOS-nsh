@@ -1,8 +1,8 @@
 // The reply box under a thread's posts and under a private-message conversation: a
 // multiline field with the send button at its bottom-right corner, in the same row. The field
 // is one line until it has the focus or has text. Both screens share this one.
-// Pasted pictures show as thumbnails above the text; they have no remove control, and
-// they go with the reply. Cmd+Enter sends (Ctrl+Enter elsewhere); Enter adds a line.
+// Pasted pictures show as thumbnails above the text, each with a remove control when the caller
+// gives `onRemove`; they go with the reply. Cmd+Enter sends (Ctrl+Enter elsewhere); Enter adds a line.
 import { effect, Image, LayoutAnimation, reduceMotion, signal, Text, untracked, View, type PasteEvent } from "nsh";
 import { useCommand } from "./commands";
 import { Input } from "nsh/base";
@@ -50,6 +50,8 @@ export function ReplyBox(props: {
   sending: () => boolean;
   uploading?: () => boolean;
   attachments?: () => Attached[];
+  /** Takes a picture out of the box. Each picture then shows a remove control; without this, none does. */
+  onRemove?: (picture: Attached) => void;
   /** Whether the reply may be sent now. By default, any text. */
   canSend?: () => boolean;
   onSend: () => void;
@@ -146,10 +148,34 @@ export function ReplyBox(props: {
       }}
     >
       {pictures().length > 0 ? (
-        <View style={{ flexDirection: "row", gap: 6, paddingHorizontal: 4 }}>
+        <View style={{ flexDirection: "row", gap: 6, paddingTop: 6, paddingHorizontal: 4 }}>
           {pictures().map((p) =>
             p.kind === "image" ? (
-              <Thumb src={p.preview} size={p.size} />
+              <View style={{ position: "relative" }}>
+                <Thumb src={p.preview} size={p.size} />
+                {props.onRemove ? (
+                  <View
+                    onPress={() => props.onRemove?.(p)}
+                    accessibilityLabel="移除图片"
+                    style={{
+                      position: "absolute",
+                      top: -6,
+                      right: -6,
+                      width: 18,
+                      height: 18,
+                      borderRadius: 9,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: palette().surface,
+                      borderWidth: 1,
+                      borderColor: palette().border,
+                    }}
+                  >
+                    {/* The glyph sits low in its line box; lift it 1pt so it is centered in the circle. */}
+                    <Text style={{ fontSize: 12, color: palette().text, transform: [{ translateY: -1 }] }}>×</Text>
+                  </View>
+                ) : null}
+              </View>
             ) : (
               <View style={{ paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1, borderColor: palette().border }}>
                 <Text style={{ fontSize: 13, color: palette().text }}>{p.name}</Text>

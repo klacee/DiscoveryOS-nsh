@@ -1,10 +1,28 @@
 import { expect, test } from "nsh/test";
-import { htmlToText, parsePmConversation, parsePmUsers, absolutize, floorFromLink, quotedFloor, bodyWithoutQuote, markQuoteAttributions, captureGroups, htmlDecode, parseBookmarks, parseChannels, parseMyReplies, parseMyThreads, unescapeNumericEntities, parsePosts, parseProfile, parseReplies, parseSearchResults, parseUser, mergePage, fixImages, pictureUrls, removePercentEncoding, trimLeadingBlanks, threadIdFromLink, parseThreadPageInfo } from "./parse";
+import { htmlToText, parsePmConversation, parsePmUsers, absolutize, floorFromLink, quotedFloor, bodyWithoutQuote, markQuoteAttributions, captureGroups, htmlDecode, parseBookmarks, parseChannels, parseMyReplies, parseMyThreads, unescapeNumericEntities, parsePosts, parseProfile, parseReplies, parseSearchResults, parseUser, mergePage, fixImages, pictureUrls, removePercentEncoding, trimLeadingBlanks, threadIdFromLink, parseThreadPageInfo, linkBareUrls } from "./parse";
 
 test("captureGroups returns one match's groups, or every whole match", () => {
   expect(captureGroups("a1b", "a(\\d)b", true)).toEqual(["1"]);
   expect(captureGroups("x1 x2", "x\\d")).toEqual(["x1", "x2"]);
   expect(captureGroups("none", "z(\\d)", true)).toEqual([]);
+});
+
+test("shows a bare http(s) address in text as a link with shortened text", () => {
+  const long = "https://example.com/" + "a".repeat(60);
+  expect(linkBareUrls(`see https://a.b/c ok`)).toBe(`see <a href="https://a.b/c">https://a.b/c</a> ok`);
+  expect(linkBareUrls(`go ${long}.`)).toBe(
+    `go <a href="${long}">${long.slice(0, 24)}…${long.slice(-12)}</a>.`,
+  );
+  expect(linkBareUrls(`<p>见https://a.b/c。</p>`)).toBe(`<p>见<a href="https://a.b/c">https://a.b/c</a>。</p>`);
+});
+
+test("keeps an address's &amp; in the link, and leaves existing links, code and tags alone", () => {
+  expect(linkBareUrls(`https://a.b/c?x=1&amp;y=2`)).toBe(`<a href="https://a.b/c?x=1&amp;y=2">https://a.b/c?x=1&amp;y=2</a>`);
+  const existing = `<a href="https://a.b/c">https://a.b/c</a>`;
+  expect(linkBareUrls(existing)).toBe(existing);
+  expect(linkBareUrls(`<pre><code>https://a.b/c</code></pre>`)).toBe(`<pre><code>https://a.b/c</code></pre>`);
+  expect(linkBareUrls(`<img src="https://a.b/x.jpg">`)).toBe(`<img src="https://a.b/x.jpg">`);
+  expect(linkBareUrls(`no links here`)).toBe(`no links here`);
 });
 
 test("decodes titles' entities", () => {

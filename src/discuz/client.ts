@@ -28,6 +28,15 @@ let session: Session | null = null;
 let formHash: string | null = null;
 export let pageSize = 50;
 
+/** The forum still shows its login page after a re-login: the session has expired and is not restored. */
+export class SessionExpired extends Error {}
+
+// A re-login that succeeded in the last few seconds is reused: requests that were sent before it, and
+// now find the login page, share its cookies instead of logging in again (a second login would
+// invalidate the first one's cookies).
+const RELOGIN_REUSE_MS = 15_000;
+let lastLogin: { hash: string; at: number } | null = null;
+
 /** The form hash in a page, if it shows the logged-in header. */
 export function parseFormHash(html: string): string | undefined {
   return LOGOUT_LINK.exec(html)?.[1];
@@ -68,7 +77,12 @@ export async function request(
   }
   if (retry && isLoginRequired(html) && session) {
     const relogged = await reLogin(session.name, session.pass, session.question, session.answer);
-    if (relogged) return request(method, path, { query, form, retry: false, cookie });
+    if (!relogged) throw new SessionExpired("登录已过期，重新登录失败。");
+    const again = await request(method, path, { query, form, retry: false, cookie });
+    // Still the login page after a successful re-login: the page is not signed-in content. Report it,
+    // rather than let a caller parse the login form as an empty list.
+    if (isLoginRequired(again)) throw new SessionExpired("登录已过期，重新登录后仍要求登录。");
+    return again;
   }
   return html;
 }
@@ -108,15 +122,19 @@ async function dologin(name: string, pass: string, question = 0, answer = ""): P
 let loginInFlight: Promise<string | undefined> | null = null;
 
 function reLogin(name: string, pass: string, question?: number, answer?: string): Promise<string | undefined> {
+  if (lastLogin && Date.now() - lastLogin.at < RELOGIN_REUSE_MS) return Promise.resolve(lastLogin.hash);
   // The new login's form hash replaces the old one: every write sends it, and the old one is refused.
   loginInFlight ??= dologin(name, pass, question, answer)
     .then((hash) => {
-      if (hash) formHash = hash;
+      if (hash) {
+        formHash = hash;
+        lastLogin = { hash, at: Date.now() };
+      }
       return hash;
     })
     .finally(() => {
-    loginInFlight = null;
-  });
+      loginInFlight = null;
+    });
   return loginInFlight;
 }
 
@@ -149,6 +167,7 @@ export async function logout(): Promise<void> {
   } finally {
     session = null;
     formHash = null;
+    lastLogin = null;
     clearCookies();
   }
 }
@@ -296,6 +315,11 @@ async function uploadToBox(box: ReplyBox, file: File, kind: "image" | "file"): P
   return added.reduce((a, b) => (Number(b) > Number(a) ? b : a));
 }
 
+/** The `attachdel[]` fields of a post: each removed attachment once, in the order given. */
+export function attachDeleteFields(ids: string[]): [string, string][] {
+  return [...new Set(ids)].map((id) => ["attachdel[]", id] as [string, string]);
+}
+
 /** A reply the forum refused; its message is the forum's own words, shown to the user. */
 export class ReplyRefused extends Error {}
 
@@ -305,7 +329,7 @@ export const REPLY_TAIL = "[url=https://www.4d4y.com/forum/viewthread.php?tid=34
 /** Posts a reply to a thread (`DiscuzAPI.postReply`). Resolves on success;
  * rejects with the page's own message when Discuz refuses it. The image
  * attachments the text inserts (`[attachimg]`) go with it. */
-export async function postReply(fid: string, tid: string, content: string): Promise<void> {
+export async function postReply(fid: string, tid: string, content: string, removed: string[] = []): Promise<void> {
   if (!formHash) throw new Error("尚未登录");
   // The Swift app sends `\n` as CRLF and escapes characters outside the
   // CJK range as numeric references, then percent-encodes the GB18030 bytes.
@@ -313,10 +337,11 @@ export async function postReply(fid: string, tid: string, content: string): Prom
   const message = htmlEntities(`${shortenLinks(content)}  ${REPLY_TAIL}`.replace(/\n/g, "\r\n"));
   const ids = attachedIds(content);
   const extra: [string, string][] = [];
-  if (ids.length > 0) {
+  if (ids.length > 0 || removed.length > 0) {
     const posttime = postTimes.get(tid) ?? (await replyBox(fid, tid)).posttime;
     extra.push(["posttime", posttime]);
     for (const id of ids) extra.push([`attachnew[${id}][description]`, ""]);
+    extra.push(...attachDeleteFields(removed));
   }
   const html = await request(
     "POST",
@@ -331,11 +356,20 @@ export async function postReply(fid: string, tid: string, content: string): Prom
 }
 
 /** A post's edit form (`post.php?action=edit`): its subject and text as the form holds them, and the form's post time. */
-export type EditForm = { subject: string; message: string; posttime: string; upload?: { uid: string; hash: string } };
+export type EditForm = {
+  subject: string;
+  message: string;
+  posttime: string;
+  upload?: { uid: string; hash: string };
+  /** The pictures the post carries on the forum, as the edit page lists them. */
+  images: { id: string; name: string; src: string }[];
+};
 
 const EDIT_MESSAGE = /<textarea[^>]*name="message"[^>]*>([\s\S]*?)<\/textarea>/;
 const EDIT_SUBJECT = /<input[^>]*name="subject"[^>]*value="([^"]*)"/;
 const EDIT_POSTTIME = /name="posttime" id="posttime" value="(\d+)"/;
+// A picture in the edit page's list: `<img src="…" id="image_<aid>"`, named by the link before it (`title="…"`).
+const EDIT_IMAGE = /<img\s+src="([^"]+)"\s+id="image_(\d+)"/g;
 // Discuz's error box on a page it refused (e.g. an edit it does not allow).
 const ALERT_ERROR = /<div class="alert_error">([\s\S]*?)<\/div>/;
 
@@ -352,7 +386,19 @@ export function parseEditForm(html: string): EditForm | undefined {
     message: htmlDecode(raw).replace(/\r\n?/g, "\n"),
     posttime,
     upload: box ? { uid: box.uid, hash: box.hash } : undefined,
+    images: editImages(html),
   };
+}
+
+/** The pictures an edit page lists for its post, each with the name its link gives. */
+function editImages(html: string): { id: string; name: string; src: string }[] {
+  const images: { id: string; name: string; src: string }[] = [];
+  for (const m of html.matchAll(EDIT_IMAGE)) {
+    const before = html.slice(Math.max(0, (m.index ?? 0) - 300), m.index ?? 0);
+    const name = /title="([^"]*)"[^<]*$/.exec(before)?.[1];
+    images.push({ id: m[2], name: htmlDecode(name ?? "") || "image", src: htmlDecode(m[1]) });
+  }
+  return images;
 }
 
 /** Opens a post's edit form (`post.php?action=edit`), as the site's own edit link does. */
@@ -389,7 +435,7 @@ function firstLine(text: string): string {
  * The forum's answer is not parsed for success: the edit form is read again, and the edit counts as
  * saved when it starts with the new text's first line. Rejects with `ReplyRefused` otherwise.
  */
-export async function editPost(fid: string, tid: string, pid: string, page: number, form: EditForm, content: string): Promise<void> {
+export async function editPost(fid: string, tid: string, pid: string, page: number, form: EditForm, content: string, removed: string[] = []): Promise<void> {
   if (!formHash) throw new Error("尚未登录");
   const message = htmlEntities(content.replace(/\n/g, "\r\n"));
   const fields: [string, string][] = [
@@ -409,6 +455,8 @@ export async function editPost(fid: string, tid: string, pid: string, page: numb
   ];
   // The pictures the text inserts are linked to the post, as a reply's are.
   for (const id of attachedIds(content)) fields.push([`attachnew[${id}][description]`, ""]);
+  // The pictures taken out of the edit are deleted on the forum with the save.
+  fields.push(...attachDeleteFields(removed));
   const body = fields.map(([k, v]) => `${formEncodeGb(k)}=${formEncodeGb(v)}`).join("&");
   const answer = await postGbNoRedirect(`${HOST}post.php?action=edit&extra=&editsubmit=yes&mod=`, body, cookieHeader() || undefined);
   absorbSetCookie(answer.setCookies);
@@ -489,7 +537,7 @@ export function threadIdFromUrl(url: string): string | undefined {
  * post without showing the thread. Rejects with `ReplyRefused` when the forum refuses it, and
  * with `ThreadUnconfirmed` when the answer shows neither.
  */
-export async function postThread(fid: string, subject: string, content: string): Promise<string | undefined> {
+export async function postThread(fid: string, subject: string, content: string, removed: string[] = []): Promise<string | undefined> {
   if (!formHash) throw new Error("尚未登录");
   if (!subject.trim()) throw new ReplyRefused("请填写标题。");
   // The form's post time is read first, as the reply box's is; the site checks it with the post.
@@ -510,10 +558,11 @@ export async function postThread(fid: string, subject: string, content: string):
   // The pictures and files the text inserts go with the thread, linked by the post time their box
   // uploaded them under; the form's own post time is then that one.
   const ids = attachedIds(content);
-  if (ids.length > 0) {
+  if (ids.length > 0 || removed.length > 0) {
     const stamp = postTimes.get(newThreadKey(fid)) ?? posttime;
     fields.find(([k]) => k === "posttime")![1] = stamp;
     for (const id of ids) fields.push([`attachnew[${id}][description]`, ""]);
+    fields.push(...attachDeleteFields(removed));
   }
   const body = fields.map(([k, v]) => `${formEncodeGb(k)}=${formEncodeGb(v)}`).join("&");
   const { html, setCookies, url } = await fetchGbRequest(

@@ -14,7 +14,7 @@ export const LINK_TEXT_TAIL = 12;
 const LINK_OR_MARKUP = /(\[(url|img|attachimg|attach|code)(?:=[^\]]*)?\][\s\S]*?\[\/\2\])|(https?:\/\/[^\s[\]<>"'\u3000-\u303f\uff00-\uffef]+)/gi;
 
 // Punctuation that ends a sentence rather than the link, when it comes right after the link.
-const TRAILING_PUNCTUATION = /[.,;:!?)]+$/;
+export const TRAILING_PUNCTUATION = /[.,;:!?)]+$/;
 
 /** The visible text of a link: the whole address when it is short, else its head, an ellipsis, and its tail. */
 export function shortLinkText(url: string): string {

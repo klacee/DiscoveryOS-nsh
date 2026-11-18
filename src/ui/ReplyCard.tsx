@@ -110,6 +110,8 @@ export function ReplyCard(props: {
               accessibilityLabel="跳到这条回复"
               style={{
                 position: "relative",
+                // Sized to its text (not stretched to the column), wrapping at the column's width.
+                alignSelf: "flex-start",
                 marginTop: i > 0 ? -6 : 0,
                 gap: 4,
                 padding: 10,

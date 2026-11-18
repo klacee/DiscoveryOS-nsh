@@ -11,6 +11,9 @@ export interface Palette {
   muted: string;
   link: string;
   border: string;
+  /** The "上次看到这里" divider: its line, and its label. */
+  divider: string;
+  dividerText: string;
   surface: string;
   selected: string;
   /** The faint tint of a reply under the pointer; lighter than `selected`, which is for selections. */
@@ -32,6 +35,8 @@ const LIGHT: Palette = {
   muted: "#57606a",
   link: "#0969da",
   border: "#d0d7de",
+  divider: "#9ccdf5",
+  dividerText: "#2f7fc1",
   surface: "#f6f8fa",
   selected: "#dbe4ff",
   replyHighlight: "#f9fcfe",
@@ -50,6 +55,8 @@ const DARK: Palette = {
   muted: "#8d96a0",
   link: "#4493f8",
   border: "#3d444d",
+  divider: "#1f4a75",
+  dividerText: "#79b8ff",
   surface: "#161b22",
   selected: "#1c2d4a",
   replyHighlight: "#1a2334",

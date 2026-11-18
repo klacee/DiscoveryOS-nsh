@@ -1,10 +1,10 @@
 // A thread's replies, pages, quote and reply draft (`PostDetailView` of the
 // Swift app). The draft is kept per thread in the app's storage.
-import { Clipboard, keymap, List, signal, Storage, Text, View, type PasteEvent, type ListRef, type ViewRef } from "nsh";
+import { cleanup, Clipboard, effect, keymap, List, signal, Storage, Text, untracked, View, type PasteEvent, type ListRef, type ViewRef } from "nsh";
 import { Dialog, TextView } from "nsh/base";
 import { currentUser, deletePost, editPost, HOST, loadEditForm, postReply, ReplyRefused, uploadAttachment, uploadEditAttachment, type EditForm } from "../discuz/client";
 import { bookmarkPost, clearThreadReplyPages, loadFloorPage, loadReplyPage, removeBookmark } from "../discuz/forum";
-import { absolutize, absoluteUrl, attachmentLinks, bodyWithoutQuote, fixDiscuzMarkup, fixImages, floorFromLink, htmlToText, isAttachmentUrl, markQuoteAttributions, mergePage, quotedFloor, repliedFloor, bodyWithoutReplyHeader, threadIdFromLink, trimLeadingBlanks, type Post, type Reply } from "../discuz/parse";
+import { absolutize, absoluteUrl, attachmentLinks, bodyWithoutQuote, fixDiscuzMarkup, fixImages, floorFromLink, htmlToText, isAttachmentUrl, linkBareUrls, markQuoteAttributions, mergePage, quotedFloor, repliedFloor, bodyWithoutReplyHeader, threadIdFromLink, trimLeadingBlanks, type Post, type Reply } from "../discuz/parse";
 import { draftToPost, postToDraft, replyQuoteInDraft } from "../discuz/quote";
 import { downloadAttachment } from "./downloads";
 import { DISCUZ_EXTENSIONS, renderDiscuzNode } from "./discuzMarkup";
@@ -14,6 +14,7 @@ import { consoleDebug } from "../debugLog";
 import { openLink } from "./links";
 import { timeAgo } from "../discuz/timeAgo";
 import { LoadingBar } from "./LoadingBar";
+import { loadLastSeen, saveLastSeen } from "./lastSeen";
 import { notify } from "./toast";
 
 // Text without its whitespace, to find a selection in a reply's text whatever its line breaks.
@@ -25,8 +26,10 @@ import { MessageActions } from "./MessageActions";
 import { EMOJI_REACTIONS_ON, pickerOpenOn, quickEmojis, reactionsOn, toggleReaction } from "./reactions";
 import { ReplyCard, type ReplyComment } from "./ReplyCard";
 import { ReplyBox } from "./ReplyBox";
-import { attachmentTag, createAttachments } from "./attachments";
-import { pictureOptions } from "./pictureSizes";
+import { createAttachments } from "./attachments";
+import { withPictureTags, withoutPictureTag } from "./pictureTags";
+import { clearSentReplyPictures, keepReplyPicture, removeReplyPicture, replyPictureList, replyRemovedIds } from "./replyPictures";
+import { knownPictureSizes, pictureOptions } from "./pictureSizes";
 import type { Attached } from "./ReplyBox";
 import { hint } from "./Hint";
 import { canSendReply } from "./replyGate";
@@ -78,6 +81,11 @@ export function Thread(props: {
   const fid = signal(props.fid);
   const replies = signal<Reply[]>([]);
   const page = signal(1);
+  // The first page the list holds: pages before it load as the list scrolls up to its start.
+  const firstPage = signal(1);
+  const earlierShown = signal(false);
+  // The floor the thread last opened at (the divider "上次看到这里" sits after it), or null.
+  const dividerPid = signal<string | null>(null);
   const more = signal(true);
   // The page whose load failed (its message and Refresh button show in the thread), or null.
   const failedPage = signal<number | null>(null);
@@ -93,7 +101,12 @@ export function Thread(props: {
   let loadingMore = false;
   const loadingMoreShown = signal(false);
 
+  // Counts the times the list is replaced from its first page or a floor's page: an earlier page
+  // that arrives after that is for a list no longer shown, and is dropped.
+  let listGeneration = 0;
+
   function fetchPage(n: number) {
+    if (n === 1) listGeneration++;
     loadReplyPage(props.post.id, n)
       .then(({ title: pageTitle, fid: pageFid, replies: list }) => {
         if (n === 1 && pageTitle) title.set(pageTitle);
@@ -102,6 +115,7 @@ export function Thread(props: {
         replies.set(merged.items);
         more.set(merged.more);
         page.set(n);
+        if (n === 1) firstPage.set(1);
         failedPage.set(null);
       })
       .catch((e) => {
@@ -120,6 +134,37 @@ export function Thread(props: {
     fetchPage(page() + 1);
   }
 
+  // Scrolled to the start of the list: the page before the first one shown is put above it, and the
+  // row that was at the top of the viewport stays where it was (the list's own position, measured
+  // before the page arrives, is put back on that row once the page is in).
+  let loadingEarlier = false;
+  function loadEarlier() {
+    if (loadingEarlier || firstPage() <= 1) return;
+    loadingEarlier = true;
+    earlierShown.set(true);
+    const n = firstPage() - 1;
+    const generation = listGeneration;
+    Promise.all([loadReplyPage(props.post.id, n), repliesList?.measureScrollPosition() ?? Promise.resolve(null)])
+      .then(([{ replies: list }, at]) => {
+        if (generation !== listGeneration) return;
+        const have = new Set(replies().map((r) => r.id));
+        const added = list.filter((r) => !have.has(r.id));
+        replies.set([...added, ...replies()]);
+        firstPage.set(n);
+        // The row at the top moved down by the rows added above it: the viewport goes back to its offset in that row.
+        const topPid = at ? replies()[at.index + added.length]?.id : undefined;
+        if (at && topPid) {
+          holdAt(topPid, -at.offset);
+          setTimeout(() => repliesList?.scrollToIndex({ index: at.index + added.length, viewOffset: -at.offset, animated: false }), 0);
+        }
+      })
+      .catch(() => notify("earlier-error", "无法加载更早的回复。"))
+      .finally(() => {
+        loadingEarlier = false;
+        earlierShown.set(false);
+      });
+  }
+
   async function setDraft(text: string) {
     draft.set(text);
     // A draft that cannot be saved (storage full) is a convenience lost, not a failed action.
@@ -128,13 +173,18 @@ export function Thread(props: {
 
   async function send() {
     if (!canSendReply(draft()) || sending() || uploading()) return;
-    // The reply's text, then the pictures as their tags.
-    const body = [draftToPost(draft(), HOST), ...attachments().map(attachmentTag)].join("\n");
+    // The reply's text, then the pictures as their tags. The pictures taken out since the last reply go with it.
+    const sentPictures = replyPictureList();
+    const removals = replyRemovedIds();
+    const body = withPictureTags(draftToPost(draft(), HOST), sentPictures);
     sending.set(true);
     try {
-      await postReply(fid(), props.post.id, body);
+      await postReply(fid(), props.post.id, body, removals);
       notify("reply", "回复已发布。");
-      attachments.set([]);
+      clearSentReplyPictures(
+        sentPictures.map((p) => p.id),
+        removals,
+      );
       await setDraft("");
     } catch (e) {
       // The forum's own refusal (e.g. the 30-second limit) is shown as it words it.
@@ -152,15 +202,47 @@ export function Thread(props: {
   }
 
   // Pictures and files pasted or dropped into the reply: uploaded to the thread, sent as tags with the reply.
-  const { attachments, uploading, onPaste, onFileDrop } = createAttachments(
+  // The reply's list is kept across threads (replyPictures.ts). An edit has its own list, from the edit form,
+  // and its uploads go through the edit form's own upload box.
+  const editPictures = signal<Attached[]>([]);
+  // The pictures an edit takes out: their attachments are deleted with the save.
+  let editRemovals: string[] = [];
+  const replyAttach = createAttachments(
+    replyPictureList,
+    (file, kind) => uploadAttachment(fid(), props.post.id, file, kind),
+    (name) => `无法上传 ${name}，请重试。`,
+    "无法添加该文件，请尝试把它拖入输入框。",
+    keepReplyPicture,
+  );
+  const editAttach = createAttachments(
+    editPictures,
     (file, kind) => {
-      // While a reply is edited, its pictures go through the edit form's own upload box.
       const current = editing();
-      return current ? uploadEditAttachment(current.form, file, kind) : uploadAttachment(fid(), props.post.id, file, kind);
+      if (!current) throw new Error("No reply is being edited");
+      return uploadEditAttachment(current.form, file, kind);
     },
     (name) => `无法上传 ${name}，请重试。`,
     "无法添加该文件，请尝试把它拖入输入框。",
   );
+  // The box's uploads, paste and pictures are those of the edit while one is open, else of the reply.
+  const uploading = () => replyAttach.uploading() || editAttach.uploading();
+  const onPaste = (e: PasteEvent) => (editing() ? editAttach : replyAttach).onPaste(e);
+  const onFileDrop = (uris: string[]) => (editing() ? editAttach : replyAttach).onFileDrop(uris);
+  const pictures = () => (editing() ? editPictures() : replyPictureList());
+
+  // Takes a picture out of the box: it leaves the list, its tag leaves the text, and an image's attachment
+  // is deleted on the forum when the reply (or the edit) is sent.
+  function removePicture(picture: Attached) {
+    const current = editing();
+    if (current) {
+      editPictures.set(editPictures().filter((p) => p.id !== picture.id));
+      if (picture.kind === "image") editRemovals = [...editRemovals, picture.id];
+      editing.set({ ...current, text: withoutPictureTag(current.text, picture.id) });
+    } else {
+      removeReplyPicture(picture);
+      setDraft(withoutPictureTag(draft(), picture.id));
+    }
+  }
 
   function quote(r: Reply, selected?: string) {
     const text = replyQuoteInDraft(r, props.post.id, selected);
@@ -201,36 +283,146 @@ export function Thread(props: {
 
   // Shows floor `pid` of this thread: when the list does not have it, its page replaces the
   // replies (the posts after it load from there), then the list scrolls to the floor.
-  async function showFloor(pid: string) {
+  // `quiet` is the thread reopening at its last-read floor: no message if it fails, and no flash.
+  // Returns whether the floor is shown.
+  // `dividerBelow`: the floor's divider (it sits under the floor's card) is put at 300pt, not the card.
+  async function showFloor(pid: string, quiet = false, dividerBelow = false): Promise<boolean> {
     if (!replies().some((r) => r.id === pid)) {
+      listGeneration++;
       try {
         const found = await loadFloorPage(props.post.id, pid);
         if (found.title) title.set(found.title);
         if (found.fid && !fid()) fid.set(found.fid);
         replies.set(found.replies);
         page.set(found.page);
+        firstPage.set(found.page);
         more.set(found.replies.length > 0);
       } catch (e) {
-        notify("floor-error", "无法打开该帖子。");
-        return;
+        if (!quiet) notify("floor-error", "无法打开该帖子。");
+        return false;
       }
     }
+    // A jump is not reading: the floors it passes are not recorded as seen (see `trackSeen`).
+    jumping = true;
+    clearTimeout(jumpTimer);
+    jumpTimer = setTimeout(() => (jumping = false), 1000);
     // A floor already on screen stays where it is; otherwise it is scrolled to 300pt below the top of the list.
     const listBox = await repliesList?.measure();
     const cardBox = await cardRefs.get(pid)?.measure();
+    // The divider starts where the card ends, so the floor's top sits above 300pt by the card's height.
+    const cardHeight = dividerBelow ? cardBox?.bounds.size.height ?? 0 : 0;
     const index = replies().findIndex((r) => r.id === pid);
-    if (index < 0) return;
+    if (index < 0) return false;
     const onScreen =
       !!listBox &&
       !!cardBox &&
       cardBox.pagePosition.y >= listBox.pagePosition.y &&
       cardBox.pagePosition.y + cardBox.bounds.size.height <= listBox.pagePosition.y + listBox.bounds.size.height;
     // The list lays out the replies it was given before it can scroll to one of them.
-    if (!onScreen) setTimeout(() => repliesList?.scrollToIndex({ index, viewPosition: 0, viewOffset: 300 }), 0);
+    if (!onScreen) {
+      holdAt(pid, 300 - cardHeight);
+      setTimeout(() => repliesList?.scrollToIndex({ index, viewPosition: 0, viewOffset: 300 - cardHeight }), 0);
+    }
     // The post jumped to shows in yellow for a second, then returns to its own colour.
-    flashedPid.set(pid);
-    clearTimeout(flashTimer);
-    flashTimer = setTimeout(() => flashedPid.set(null), 1000);
+    if (!quiet) {
+      flashedPid.set(pid);
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => flashedPid.set(null), 1000);
+    }
+    return true;
+  }
+
+  // The floors on screen are read: the furthest one read is kept, and saved for the thread to open at
+  // next time. A save waits a second, so scrolling writes once; it is also written when the thread closes.
+  let seenPlace: { pid: string; seq: number } | null = null;
+  let seenTid = "";
+  let seenSaveTimer: ReturnType<typeof setTimeout> | undefined;
+  let jumping = false;
+  let jumpTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function flushSeen() {
+    clearTimeout(seenSaveTimer);
+    seenSaveTimer = undefined;
+    if (seenPlace) void saveLastSeen(seenTid, seenPlace);
+  }
+  cleanup(flushSeen);
+
+  // The floor the view is held on: the view is kept with it at its offset from the top of the list until
+  // the user scrolls (a touch, a drag or the wheel releases it). While it is held, any other scroll is put
+  // back, and so is any content above the floor changing its height (pictures, quoted comments).
+  let hold: { pid: string; offset: number } | null = null;
+
+  function releaseHold() {
+    hold = null;
+  }
+
+  function holdAt(pid: string, offset: number) {
+    hold = { pid, offset };
+  }
+
+  // Scrolls back to the held floor. Its own scroll is not reading, so it is not recorded as seen.
+  function reholdAt() {
+    if (!hold) return;
+    const index = replies().findIndex((r) => r.id === hold!.pid);
+    if (index < 0) return;
+    jumping = true;
+    clearTimeout(jumpTimer);
+    jumpTimer = setTimeout(() => (jumping = false), 1000);
+    const { offset } = hold;
+    setTimeout(() => repliesList?.scrollToIndex({ index, viewPosition: 0, viewOffset: offset }), 0);
+  }
+
+  // A scroll that moved the held floor off its offset (more than a couple of points), or left it off the
+  // rendered rows, is put back on it.
+  async function correctHold() {
+    const held = hold;
+    if (!held || jumping) return;
+    const listBox = await repliesList?.measure();
+    const cardBox = await cardRefs.get(held.pid)?.measure();
+    if (hold !== held) return;
+    if (listBox && cardBox) {
+      const drift = cardBox.pagePosition.y - listBox.pagePosition.y - held.offset;
+      if (Math.abs(drift) <= 2) return;
+    }
+    reholdAt();
+  }
+
+  // Content above the held floor changing its height puts the view back on the held floor: a picture's
+  // size arriving, and replies arriving (their quoted comments are drawn under the posts they quote, which
+  // can be above the held floor).
+  effect(() => {
+    knownPictureSizes();
+    replies();
+    untracked(reholdAt);
+  });
+
+  // Called as the list's visible floors change. A floor is read only when all of it is on screen, so the
+  // furthest such floor further down than any read so far becomes the new place. Candidates are checked
+  // from the furthest down, and the first fully on screen wins.
+  async function trackSeen(visible: { index?: number | null }[]) {
+    if (jumping) return;
+    const floor = seenPlace?.seq ?? 0;
+    const candidates = visible
+      .map((v) => (v.index == null ? undefined : replies()[v.index]))
+      .filter((r): r is Reply => !!r && r.seq > floor)
+      .sort((a, b) => b.seq - a.seq);
+    if (candidates.length === 0) return;
+    const listBox = await repliesList?.measure();
+    if (!listBox || jumping) return;
+    for (const r of candidates) {
+      const box = await cardRefs.get(r.id)?.measure();
+      if (!box) continue;
+      const fullyShown =
+        box.pagePosition.y >= listBox.pagePosition.y &&
+        box.pagePosition.y + box.bounds.size.height <= listBox.pagePosition.y + listBox.bounds.size.height;
+      if (!fullyShown) continue;
+      if (seenPlace && seenPlace.seq >= r.seq) return;
+      seenPlace = { pid: r.id, seq: r.seq };
+      seenTid = props.post.id;
+      clearTimeout(seenSaveTimer);
+      seenSaveTimer = setTimeout(flushSeen, 1000);
+      return;
+    }
   }
 
   // A link to a floor: in this thread the floor is shown here; in another, that thread opens at it.
@@ -246,15 +438,13 @@ export function Thread(props: {
   // Only the signed-in user's own replies can be edited.
   const isOwn = (r: Reply) => !!props.signedIn && currentUser() === r.author.name;
 
-  // The reply's own pictures, set aside while an edit is open; the edit has its own.
-  let replyPictures: Attached[] = [];
-
   async function startEdit(r: Reply) {
     if (sending() || uploading() || editing()) return;
     try {
       const form = await loadEditForm(fid(), props.post.id, r.id, 1);
-      replyPictures = attachments();
-      attachments.set([]);
+      // The reply's pictures are kept as they are; the edit starts with the pictures the post carries on the forum.
+      editPictures.set(form.images.map((i): Attached => ({ id: i.id, kind: "image", name: i.name, preview: i.src, size: null })));
+      editRemovals = [];
       // The box shows the quotes as `>` lines; saving turns them back into the forum's quotes.
       editing.set({ pid: r.id, seq: r.seq, form, text: postToDraft(form.message) });
       replyField?.focus();
@@ -265,8 +455,8 @@ export function Thread(props: {
 
   function endEdit() {
     editing.set(null);
-    attachments.set(replyPictures);
-    replyPictures = [];
+    editPictures.set([]);
+    editRemovals = [];
   }
 
   // The reply waiting for its delete to be confirmed in the dialog, or null.
@@ -302,11 +492,12 @@ export function Thread(props: {
   async function saveEdit() {
     const current = editing();
     if (!current || !canSendReply(current.text) || sending() || uploading()) return;
-    // The pictures go with the text as tags, as a reply's do.
-    const body = [draftToPost(current.text, HOST), ...attachments().map(attachmentTag)].join("\n");
+    // The pictures added in this edit go with the text as tags, as a reply's do; the post's own pictures are in its text already.
+    const added = editPictures().filter((p) => !current.form.images.some((i) => i.id === p.id));
+    const body = withPictureTags(draftToPost(current.text, HOST), added);
     sending.set(true);
     try {
-      await editPost(fid(), props.post.id, current.pid, 1, current.form, body);
+      await editPost(fid(), props.post.id, current.pid, 1, current.form, body, editRemovals);
       notify("edit", "回复已修改。");
       endEdit();
     } catch (e) {
@@ -430,9 +621,20 @@ export function Thread(props: {
     useCommand("thread.react4", { enabled: reactEnabled(4), run: () => reactWithQuick(4) });
   }
 
+  // Opens the thread at the floor last read to, with the divider after it. With none saved (or it is
+  // the first floor, or it cannot be loaded), the thread opens at its first page.
+  async function reopenAtSeen() {
+    const saved = await loadLastSeen(props.post.id).catch(() => null);
+    if (!saved || saved.seq <= 1) return fetchPage(1);
+    if (!(await showFloor(saved.pid, true, true))) return fetchPage(1);
+    seenPlace = { pid: saved.pid, seq: saved.seq };
+    seenTid = props.post.id;
+    dividerPid.set(saved.pid);
+  }
+
   // Load the first page and the saved draft once.
   if (props.focusPid) void showFloor(props.focusPid);
-  else fetchPage(1);
+  else void reopenAtSeen();
   Storage.getItem(draftKey(props.post.id))
     .then((text) => draft.set(postToDraft(text ?? "")))
     .catch(() => undefined);
@@ -524,103 +726,122 @@ export function Thread(props: {
         style={{ flex: 1 }}
         // A press anywhere in the posts takes the focus out of the reply box, as Esc does, so the
         // shortcuts (q, e) act on the post under the pointer. The capture runs before the post's own press.
-        onTouchStartCapture={() => replyField?.blur()}
+        onTouchStartCapture={() => {
+          replyField?.blur();
+          releaseHold();
+        }}
+        onScrollDragStart={() => releaseHold()}
+        onScroll={() => void correctHold()}
+        onWheel={() => releaseHold()}
         contentStyle={{ padding: 12, gap: 12 }}
         each={replies()}
         estimatedItemSize={180}
         onLoadMore={loadMore}
+        onLoadMoreAtStart={loadEarlier}
+        onViewableItemsChange={(e) => void trackSeen(e.viewableItems)}
+        header={() => <View>{earlierShown() ? <LoadingBar /> : null}</View>}
         footer={() => <View>{loadingMoreShown() ? <LoadingBar /> : null}</View>}
         ref={(n: ListRef | null) => {
           repliesList = n ?? undefined;
         }}
       >
         {(item) => (
-          <ReplyCard
-            avatar={item().author.avatar ? absoluteUrl(item().author.avatar!, HOST) : undefined}
-            name={item().author.name}
-            isOp={opId() !== undefined && item().author.id === opId()}
-            meta={`#${item().seq} · ${timeAgo(item().at)}`}
-            comments={() => commentsOn(item().id)}
-            onCommentPress={(pid) => openFloor(pid, props.post.id, item().id)}
-            highlighted={() => hovered() === item().seq}
-            flashed={() => flashedPid() === item().id}
-            cardRef={(n) => {
-              // A row is reused for other replies, so an empty ref only forgets this reply's card.
-              if (n) cardRefs.set(item().id, n);
-              else cardRefs.delete(item().id);
-            }}
-            onHoverIn={() => hovered.set(item().seq)}
-            onHoverOut={() => {
-              // The pointer goes to the picker, which is outside the post: the post stays highlighted while it is open.
-              if (hovered() === item().seq && pickerOpenOn() === null) hovered.set(null);
-            }}
-            // Hovering a post shows its bar: the quick emojis, and quote, edit and delete. Edit and
-            // delete are the signed-in user's own posts only, and floor 1 is not deleted from here.
-            actionBar={
-              EMOJI_REACTIONS_ON || props.signedIn ? (
-                <MessageActions
-                  pid={item().id}
-                  quick={quickEmojis}
-                  onClose={() => {
-                    if (hovered() === item().seq) hovered.set(null);
-                  }}
-                  mine={() => reactionsOn(item().id)}
-                  onReact={(emoji) => toggleReaction(item().id, emoji)}
-                  onQuote={props.signedIn ? () => quote(item()) : undefined}
-                  onEdit={props.signedIn && isOwn(item()) ? () => void startEdit(item()) : undefined}
-                  onDelete={props.signedIn && isOwn(item()) && item().seq !== 1 ? () => pendingDelete.set({ pid: item().id, seq: item().seq }) : undefined}
-                />
-              ) : null
-            }
-            reactions={EMOJI_REACTIONS_ON ? () => reactionsOn(item().id) : undefined}
-            onReactionPress={(emoji) => toggleReaction(item().id, emoji)}
-            body={
-              <View style={{ gap: 12, alignSelf: "stretch" }}>
-                <TextView
-                  html={absolutize(markQuoteAttributions(trimLeadingBlanks(fixDiscuzMarkup(fixImages(item().body, pictureOptions(item().body, HOST)))), props.post.id), HOST)}
-                  styles={item().seq === 1 ? OP_TITLE_STYLES : undefined}
-                  extensions={DISCUZ_EXTENSIONS}
-                  selectable
-                  renderCustom={(node) =>
-                    renderDiscuzNode(
-                      node,
-                      (pid) => openFloor(pid, props.post.id, item().id),
-                      (pid) => replies().find((r) => r.id === pid)?.seq,
-                    )
-                  }
-                  onLinkPress={(e) => {
-                    // A 4d4y thread link opens in this column; a file the post attaches is saved to Downloads;
-                    // any other link opens in the system browser.
-                    // A quote's arrow goes to its floor (see `openFloor`).
-                    consoleDebug(`link: press ${JSON.stringify({ url: e.url, seq: item().seq })}`);
-                    const floor = floorFromLink(e.url);
-                    if (floor) {
-                      openFloor(floor.pid, floor.ptid, item().id);
-                      return;
+          <View>
+            <ReplyCard
+              avatar={item().author.avatar ? absoluteUrl(item().author.avatar!, HOST) : undefined}
+              name={item().author.name}
+              isOp={opId() !== undefined && item().author.id === opId()}
+              meta={`#${item().seq} · ${timeAgo(item().at)}`}
+              comments={() => commentsOn(item().id)}
+              onCommentPress={(pid) => openFloor(pid, props.post.id, item().id)}
+              highlighted={() => hovered() === item().seq}
+              flashed={() => flashedPid() === item().id}
+              cardRef={(n) => {
+                // A row is reused for other replies, so an empty ref only forgets this reply's card.
+                if (n) cardRefs.set(item().id, n);
+                else cardRefs.delete(item().id);
+              }}
+              onHoverIn={() => hovered.set(item().seq)}
+              onHoverOut={() => {
+                // The pointer goes to the picker, which is outside the post: the post stays highlighted while it is open.
+                if (hovered() === item().seq && pickerOpenOn() === null) hovered.set(null);
+              }}
+              // Hovering a post shows its bar: the quick emojis, and quote, edit and delete. Edit and
+              // delete are the signed-in user's own posts only, and floor 1 is not deleted from here.
+              actionBar={
+                EMOJI_REACTIONS_ON || props.signedIn ? (
+                  <MessageActions
+                    pid={item().id}
+                    quick={quickEmojis}
+                    onClose={() => {
+                      if (hovered() === item().seq) hovered.set(null);
+                    }}
+                    mine={() => reactionsOn(item().id)}
+                    onReact={(emoji) => toggleReaction(item().id, emoji)}
+                    onQuote={props.signedIn ? () => quote(item()) : undefined}
+                    onEdit={props.signedIn && isOwn(item()) ? () => void startEdit(item()) : undefined}
+                    onDelete={props.signedIn && isOwn(item()) && item().seq !== 1 ? () => pendingDelete.set({ pid: item().id, seq: item().seq }) : undefined}
+                  />
+                ) : null
+              }
+              reactions={EMOJI_REACTIONS_ON ? () => reactionsOn(item().id) : undefined}
+              onReactionPress={(emoji) => toggleReaction(item().id, emoji)}
+              body={
+                <View style={{ gap: 12, alignSelf: "stretch" }}>
+                  <TextView
+                    html={absolutize(markQuoteAttributions(trimLeadingBlanks(linkBareUrls(fixDiscuzMarkup(fixImages(item().body, pictureOptions(item().body, HOST))))), props.post.id), HOST)}
+                    styles={item().seq === 1 ? OP_TITLE_STYLES : undefined}
+                    extensions={DISCUZ_EXTENSIONS}
+                    selectable
+                    renderCustom={(node) =>
+                      renderDiscuzNode(
+                        node,
+                        (pid) => openFloor(pid, props.post.id, item().id),
+                        (pid) => replies().find((r) => r.id === pid)?.seq,
+                      )
                     }
-                    const tid = threadIdFromLink(e.url);
-                    if (tid && props.onOpenThread) {
-                      props.onOpenThread(tid, undefined, item().id);
-                    } else if (isAttachmentUrl(e.url)) {
-                      const file = attachmentLinks(item().body).find((a) => absoluteUrl(a.url, HOST) === e.url);
-                      void downloadAttachment(e.url, file?.name ?? "download");
-                    } else {
-                      void openLink(e.url);
-                    }
-                  }}
-                />
-                {/* Bilibili videos the post links to play under its text (the text view cannot show a player). */}
-                {bilibiliRefs(item().body).map((ref) => ("url" in ref ? <BiliShortPlayer url={ref.url} /> : <BiliPlayer video={ref} />))}
-                {douyinRefs(item().body).map((ref) => ("url" in ref ? <DouyinShortPlayer url={ref.url} /> : <DouyinPlayer id={ref.id} />))}
-                {videoLinksIn(item().body).map((url) => (
-                  <VideoLinkPlayer url={url} />
-                ))}
-                {xiaohongshuNoteLinks(item().body).map((link) => (
-                  <XhsCard link={link} />
-                ))}
+                    onLinkPress={(e) => {
+                      // A 4d4y thread link opens in this column; a file the post attaches is saved to Downloads;
+                      // any other link opens in the system browser.
+                      // A quote's arrow goes to its floor (see `openFloor`).
+                      consoleDebug(`link: press ${JSON.stringify({ url: e.url, seq: item().seq })}`);
+                      const floor = floorFromLink(e.url);
+                      if (floor) {
+                        openFloor(floor.pid, floor.ptid, item().id);
+                        return;
+                      }
+                      const tid = threadIdFromLink(e.url);
+                      if (tid && props.onOpenThread) {
+                        props.onOpenThread(tid, undefined, item().id);
+                      } else if (isAttachmentUrl(e.url)) {
+                        const file = attachmentLinks(item().body).find((a) => absoluteUrl(a.url, HOST) === e.url);
+                        void downloadAttachment(e.url, file?.name ?? "download");
+                      } else {
+                        void openLink(e.url);
+                      }
+                    }}
+                  />
+                  {/* Bilibili videos the post links to play under its text (the text view cannot show a player). */}
+                  {bilibiliRefs(item().body).map((ref) => ("url" in ref ? <BiliShortPlayer url={ref.url} /> : <BiliPlayer video={ref} />))}
+                  {douyinRefs(item().body).map((ref) => ("url" in ref ? <DouyinShortPlayer url={ref.url} /> : <DouyinPlayer id={ref.id} />))}
+                  {videoLinksIn(item().body).map((url) => (
+                    <VideoLinkPlayer url={url} />
+                  ))}
+                  {xiaohongshuNoteLinks(item().body).map((link) => (
+                    <XhsCard link={link} />
+                  ))}
+                </View>
+              }
+            />
+            {/* The divider after the floor last read to. Not shown when that floor is the newest, with no more pages. */}
+            {dividerPid() === item().id && (more() || replies()[replies().length - 1]?.id !== item().id) ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 12 }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: palette().divider }} />
+                <Text style={{ fontSize: 12, color: palette().dividerText }}>上次看到这里</Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: palette().divider }} />
               </View>
-            }
-          />
+            ) : null}
+          </View>
         )}
       </List>
       {/* The Send button sits inside the reply box, under the text, at its right edge. Signed out, there is no reply box. */}
@@ -643,7 +864,8 @@ export function Thread(props: {
             }}
             sending={() => sending()}
             uploading={() => uploading()}
-            attachments={() => attachments()}
+            attachments={pictures}
+            onRemove={removePicture}
             canSend={() => canSendReply(editing()?.text ?? draft())}
             onSend={() => (editing() ? void saveEdit() : void send())}
             onPaste={onPaste}

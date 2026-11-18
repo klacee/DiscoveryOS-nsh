@@ -3,6 +3,7 @@
 // `htmlDecoded`, and the channel and thread rows of the forum pages.
 
 import { forumTime } from "./timeAgo";
+import { shortLinkText, TRAILING_PUNCTUATION } from "./shortLinks";
 
 /** `String.captureGroups(regex:skipFirst:)`. */
 export function captureGroups(text: string, pattern: string, skipFirst = false): string[] {
@@ -683,6 +684,38 @@ export function fixDiscuzMarkup(html: string): string {
     codeOpen.lastIndex = end;
   }
   return out + html.slice(at);
+}
+
+// Elements whose text is not prose: a bare address inside them is left as it is.
+const NO_LINK_TAGS = new Set(["a", "pre", "code", "script", "style", "textarea"]);
+// A bare http(s) address in HTML text: it stops at spaces, tags, quotes, brackets, CJK or fullwidth punctuation, and
+// at an entity other than `&amp;`.
+const BARE_URL_IN_HTML = /https?:\/\/(?:&amp;|[^\s<>"'&[\]　-〿＀-￯])+/gi;
+
+/** One bare address as a link whose visible text is shortened the way `shortenLinks` shortens it on send. */
+function bareLinkHtml(raw: string): string {
+  const trailing = TRAILING_PUNCTUATION.exec(raw)?.[0] ?? "";
+  const href = trailing ? raw.slice(0, -trailing.length) : raw;
+  const url = htmlDecode(href);
+  if (url.length === "https://".length) return raw;
+  return `<a href="${href}">${escapeHtml(shortLinkText(url))}</a>${trailing}`;
+}
+
+/** Shows each bare http(s) address in a post's text as a link, with shortened text, the way a link a post carries
+ * is shown. Text inside an existing link, code, or a tag is left alone. Run after `fixImages` and `fixDiscuzMarkup`. */
+export function linkBareUrls(html: string): string {
+  let skipping = 0; // how many skipped elements are open around the current piece
+  return html
+    .split(/(<[^>]*>)/)
+    .map((piece, index) => {
+      if (index % 2 === 1) {
+        const tag = /^<(\/?)([a-z0-9]+)\b/i.exec(piece);
+        if (tag && NO_LINK_TAGS.has(tag[2].toLowerCase())) skipping = Math.max(0, skipping + (tag[1] ? -1 : 1));
+        return piece;
+      }
+      return skipping > 0 ? piece : piece.replace(BARE_URL_IN_HTML, bareLinkHtml);
+    })
+    .join("");
 }
 
 /** The style of a Discuz `<font>` (`[color=…]` and `[size=N]`): a hex or a plain color name, and the font size in pixels. */

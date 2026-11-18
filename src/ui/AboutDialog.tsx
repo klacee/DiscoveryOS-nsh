@@ -18,6 +18,19 @@ function closeAbout(): void {
   aboutOpen.set(false);
 }
 
+// The faint colour of a shared build prefix: the muted text mixed toward the card's surface. Nested text
+// spans take a colour but not an opacity, so the faint part is drawn with a colour of its own.
+function faintColor(): string {
+  const a = palette().muted;
+  const b = palette().surface;
+  const channel = (i: number) => {
+    const from = parseInt(a.slice(1 + i * 2, 3 + i * 2), 16);
+    const to = parseInt(b.slice(1 + i * 2, 3 + i * 2), 16);
+    return Math.round(from * 0.45 + to * 0.55).toString(16).padStart(2, "0");
+  };
+  return `#${channel(0)}${channel(1)}${channel(2)}`;
+}
+
 // Builds are Unix times, which read better in hex: shown as uppercase digits, no prefix.
 function hexBuild(value: unknown): string {
   return buildHex(Number(value ?? 0));
@@ -132,7 +145,7 @@ export function AboutDialog() {
             <View style={{ flexDirection: "row", alignItems: "center", paddingLeft: line.indent ? 12 : 0 }}>
               <Text style={{ fontSize: 12, color: palette().muted, flexShrink: 1 }}>
                 {line.segments.map((segment) => (
-                  <Text style={{ opacity: segment.faint ? 0.4 : 1 }}>{segment.text}</Text>
+                  <Text style={{ color: segment.faint ? faintColor() : palette().muted }}>{segment.text}</Text>
                 ))}
               </Text>
               {line.action ? (

@@ -4,7 +4,7 @@
 import { effect, List, signal, Storage, Text, untracked, View } from "nsh";
 import { TextView } from "nsh/base";
 import { loadPmConversation, sendPm } from "../discuz/forum";
-import { absolutize, absoluteUrl, fixImages, threadIdFromLink, trimLeadingBlanks, type PmMessage, type Post } from "../discuz/parse";
+import { absolutize, absoluteUrl, fixImages, linkBareUrls, threadIdFromLink, trimLeadingBlanks, type PmMessage, type Post } from "../discuz/parse";
 import { HOST } from "../discuz/client";
 import { palette } from "./appearance";
 import { notify } from "./toast";
@@ -96,7 +96,7 @@ export function Conversation(props: { peer: () => Post; onOpenThread?: (tid: str
               meta={item().at}
               body={
                 <TextView
-                  html={absolutize(trimLeadingBlanks(fixImages(item().body, pictureOptions(item().body, HOST))), HOST)}
+                  html={absolutize(trimLeadingBlanks(linkBareUrls(fixImages(item().body, pictureOptions(item().body, HOST)))), HOST)}
                   onLinkPress={(e) => {
                     const tid = threadIdFromLink(e.url);
                     if (tid && props.onOpenThread) props.onOpenThread(tid);

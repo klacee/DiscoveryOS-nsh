@@ -1,9 +1,9 @@
 // A short link in a post, shown as its video once it resolves. The short link itself is shown
-// in a WebView straight away, while it resolves in the background. If it resolves in time
-// (SHORT_LINK_TIMEOUT_MS, inside the resolver), that WebView is replaced by the video's own
-// player; if not, the WebView stays, so the video is still reachable.
-import { signal, View, WebView, type JSX } from "nsh";
-import { VIDEO_FULLSCREEN_SCRIPT } from "./webviewFullscreen";
+// as a tap-to-play cover while it resolves in the background. If it resolves in time
+// (SHORT_LINK_TIMEOUT_MS, inside the resolver), that cover is replaced by the video's own
+// player; if not, the cover stays, so the video is still reachable: a tap opens the short link.
+import { signal, View, type JSX } from "nsh";
+import { VideoPage } from "./VideoCover";
 
 export function ShortLinkPlayer<T>(props: {
   url: string;
@@ -29,11 +29,7 @@ export function ShortLinkPlayer<T>(props: {
       {value() ? (
         props.play(value()!)
       ) : (
-        <WebView
-          src={props.url}
-          injectedJavaScript={VIDEO_FULLSCREEN_SCRIPT}
-          style={{ ...props.fallbackSize, backgroundColor: "#000", borderRadius: 8 }}
-        />
+        <VideoPage src={props.url} label="播放视频" {...props.fallbackSize} />
       )}
     </View>
   );

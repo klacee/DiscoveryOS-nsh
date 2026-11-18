@@ -5,9 +5,10 @@ import { signal, Storage, Text, View } from "nsh";
 import { Input } from "nsh/base";
 import { postThread, ReplyRefused, ThreadUnconfirmed, uploadAttachment } from "../discuz/client";
 import { attachmentTag, createAttachments } from "./attachments";
+import { withoutPictureTag } from "./pictureTags";
 import type { Post } from "../discuz/parse";
 import { palette } from "./appearance";
-import { ReplyBox } from "./ReplyBox";
+import { ReplyBox, type Attached } from "./ReplyBox";
 import { canSendReply } from "./replyGate";
 import { notify } from "./toast";
 import { titleBarShown } from "./TitleBar";
@@ -39,7 +40,11 @@ export function NewThread(props: {
   const body = signal("");
   const sending = signal(false);
   // Pictures and files pasted or dropped into the body: uploaded to the channel, sent as tags with the thread.
+  const pictures = signal<Attached[]>([]);
+  // The images taken out of the body since the thread was posted: their attachments are deleted with it.
+  let removedImages: string[] = [];
   const { attachments, uploading, onPaste, onFileDrop } = createAttachments(
+    pictures,
     (file, kind) => uploadAttachment(props.fid, undefined, file, kind),
     (name) => `无法上传 ${name}，请重试。`,
     "无法添加这个文件，请拖进输入框试试。",
@@ -70,8 +75,9 @@ export function NewThread(props: {
     // The body's text, then the pictures and files as their tags.
     const text = [body(), ...attachments().map(attachmentTag)].join("\n");
     try {
-      const tid = await postThread(props.fid, title, text);
+      const tid = await postThread(props.fid, title, text, removedImages);
       attachments.set([]);
+      removedImages = [];
       await Storage.setItem(draftKey(props.fid), "").catch(() => undefined);
       notify("new-thread", "新帖已发布。");
       props.onPosted(tid ? { id: tid, title, fid: props.fid } : undefined);
@@ -123,6 +129,13 @@ export function NewThread(props: {
         onSend={send}
         onCancel={props.onClose}
         attachments={() => attachments()}
+        onRemove={(picture: Attached) => {
+          // The picture leaves the box and its tag leaves the body; an image's attachment is deleted with the thread.
+          attachments.set(attachments().filter((p) => p.id !== picture.id));
+          if (picture.kind === "image") removedImages = [...removedImages, picture.id];
+          body.set(withoutPictureTag(body(), picture.id));
+          save();
+        }}
         uploading={() => uploading()}
         onPaste={onPaste}
         onFileDrop={onFileDrop}

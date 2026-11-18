@@ -6,6 +6,7 @@ import { douyinPageUrl } from "../douyin/links";
 import { resolveDouyinShort } from "../douyin/resolve";
 import { palette } from "./appearance";
 import { ShortLinkPlayer } from "./ShortLinkPlayer";
+import { VideoCover } from "./VideoCover";
 import { VIDEO_FULLSCREEN_SCRIPT } from "./webviewFullscreen";
 
 // The page is a whole site (the feed and the video in a modal), so it gets a fixed
@@ -38,13 +39,7 @@ export function DouyinPlayer(props: { id: string }) {
           style={{ height: PLAYER_HEIGHT, backgroundColor: "#000", borderRadius: 8 }}
         />
       ) : (
-        <View
-          onPress={() => started.set(true)}
-          accessibilityLabel={`打开抖音视频 ${props.id}`}
-          style={{ height: PLAYER_HEIGHT, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}
-        >
-          <Text style={{ fontSize: 16, color: "#fff" }}>{`▶ 打开抖音视频 ${props.id}`}</Text>
-        </View>
+        <VideoCover label={`播放抖音视频 ${props.id}`} height={PLAYER_HEIGHT} onPress={() => started.set(true)} />
       )}
       <Text style={{ fontSize: 12, color: palette().muted }}>需要登录的视频，在页面中扫码登录即可</Text>
     </View>

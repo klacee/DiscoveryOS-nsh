@@ -7,6 +7,10 @@ import { consoleDebug } from "../debugLog";
 const sizes = signal<Record<string, PictureSize>>({});
 const requested = new Set<string>();
 
+/** The sizes read so far, by URL. Reading it in an effect runs the effect each time a picture's size arrives: a
+ * picture drawn at its size changes the height of the post that shows it. */
+export const knownPictureSizes = sizes;
+
 /** The options that show a post's pictures at their own size on this screen: asks for the sizes not read yet. */
 export function pictureOptions(body: string, base: string): PictureOptions {
   for (const url of pictureUrls(body, base)) request(url);

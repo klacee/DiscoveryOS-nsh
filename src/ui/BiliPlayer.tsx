@@ -8,6 +8,7 @@ import { playerRatio, videoShape, type VideoShape } from "../bilibili/video";
 import { palette } from "./appearance";
 import { BiliLogin } from "./BiliLogin";
 import { ShortLinkPlayer } from "./ShortLinkPlayer";
+import { VideoCover } from "./VideoCover";
 import { VIDEO_FULLSCREEN_SCRIPT } from "./webviewFullscreen";
 
 const playerUrl = (video: BiliVideoId) =>
@@ -47,13 +48,7 @@ export function BiliPlayer(props: { video: BiliVideoId }) {
           style={{ aspectRatio: ratio(), backgroundColor: "#000", borderRadius: 8 }}
         />
       ) : (
-        <View
-          onPress={() => started.set(true)}
-          accessibilityLabel={`播放 B 站视频 ${videoLabel(props.video)}`}
-          style={{ aspectRatio: ratio(), borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: "#000" }}
-        >
-          <Text style={{ fontSize: 16, color: "#fff" }}>{`▶ 播放 B 站视频 ${videoLabel(props.video)}`}</Text>
-        </View>
+        <VideoCover label={`播放 B 站视频 ${videoLabel(props.video)}`} aspectRatio={ratio()} onPress={() => started.set(true)} />
       )}
       <View onPress={() => loginShown.set(!loginShown())} accessibilityLabel="B 站登录">
         <Text style={{ fontSize: 12, color: palette().link }}>{biliSignedIn() ? "B 站已登录（点击查看）" : "登录 B 站（会员视频需要）"}</Text>

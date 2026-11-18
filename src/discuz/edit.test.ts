@@ -1,5 +1,5 @@
 import { expect, test } from "nsh/test";
-import { parseEditForm } from "./client";
+import { attachDeleteFields, parseEditForm } from "./client";
 
 // Markup as the edit page sends it (`post.php?action=edit`): the subject input, the message textarea
 // and the hidden post time.
@@ -14,6 +14,7 @@ test("reads the subject, post time and text of an edit form", () => {
     subject: "从 client 发的帖子",
     message: "这里是正文, 咋样?\n[attachimg]6173402[/attachimg]\n1 < 2 && 3",
     posttime: "1794388134",
+    images: [],
   });
 });
 
@@ -29,4 +30,23 @@ test("reads the upload box of the edit form, for pictures added while editing", 
 
 test("finds no edit form on a page without one", () => {
   expect(parseEditForm("<html>no such post</html>")).toBe(undefined);
+});
+
+test("reads the pictures the edit page lists for the post, with their names", () => {
+  const withList =
+    editPage +
+    "</textarea>" +
+    '<div id="imgattachlist"><table><tr><td><a href="javascript:;" title="shot.png"><img src="https://img02.4d4y.com/forum/attachments/day_261116/a.png" id="image_6176202" onclick="insertAttachimgTag(\'6176202\')" width="110" /></a></td></tr></table></div>';
+  expect(parseEditForm(withList)?.images).toEqual([
+    { id: "6176202", name: "shot.png", src: "https://img02.4d4y.com/forum/attachments/day_261116/a.png" },
+  ]);
+  expect(parseEditForm(editPage + "</textarea>")?.images).toEqual([]);
+});
+
+test("each removed attachment is sent once as attachdel[]", () => {
+  expect(attachDeleteFields(["6175991", "6175991", "6175992"])).toEqual([
+    ["attachdel[]", "6175991"],
+    ["attachdel[]", "6175992"],
+  ]);
+  expect(attachDeleteFields([])).toEqual([]);
 });
